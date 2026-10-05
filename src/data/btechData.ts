@@ -15,6 +15,8 @@ export const BRANCHES_LIST = [
   'B.Tech. Computer Science & Engineering',
   'B.Tech. Information Technology',
   'B.Tech. AI & Robotics',
+  'B.Tech. Cyber Security',
+  'B.Tech. Block Chain Technology',
   'B.Tech. Electronics & Telecommunication Engineering',
   'B.Tech. Electrical Engineering',
   'B.Tech. Mechanical Engineering',

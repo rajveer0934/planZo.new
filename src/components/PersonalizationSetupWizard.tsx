@@ -166,6 +166,8 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     'Information Technology (IT)',
     'Artificial Intelligence & Machine Learning (AIML)',
     'Artificial Intelligence & Data Science (AI & DS)',
+    'Cyber Security',
+    'Block Chain / Blockchain Technology',
     'Electronics & Communication Engineering (ECE)',
     'Electrical Engineering (EE)',
     'Mechanical Engineering (ME)',
@@ -322,8 +324,6 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
 
   // Step 5: Generating state
   const [isGenerating, setIsGenerating] = useState(false);
-
-  if (!isOpen) return null;
 
   // Compute final subject list from user selections
   const getCompiledSubjects = (): SubjectCourse[] => {
@@ -676,6 +676,8 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
 
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-stone-950/70 backdrop-blur-xs animate-fadeIn">
