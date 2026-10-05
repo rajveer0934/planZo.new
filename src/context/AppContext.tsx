@@ -25,6 +25,8 @@ import {
   SATI_SUBJECT_FOLDERS_DATA,
   getCurriculumForSatiSemester,
 } from '../data/satiVidishaData';
+import { getBranchSemesterSubjects } from '../data/branchCurriculumData';
+import { FOUNDATION_ENGINEERING_SUBJECTS } from '../data/foundationSubjects';
 
 export interface BunkCalculation {
   percentage: number;
@@ -48,6 +50,7 @@ interface AppContextType {
   recalibrateNotice: string | null;
   clearRecalibrateNotice: () => void;
   subjects: SubjectCourse[];
+  setSubjects: React.Dispatch<React.SetStateAction<SubjectCourse[]>>;
   toggleTopicComplete: (subjectId: string, moduleId: string, topicId: string) => void;
   bandwidth: MentalBandwidthState;
   reflections: ReflectionEntry[];
@@ -71,6 +74,7 @@ interface AppContextType {
   setIsPersonalizationWizardOpen: (open: boolean) => void;
   // 75% Attendance Feature
   attendance: SubjectAttendance[];
+  setAttendance: React.Dispatch<React.SetStateAction<SubjectAttendance[]>>;
   markAttendance: (subjectId: string, status: 'present' | 'absent') => void;
   adjustAttendanceCount: (subjectId: string, attended: number, total: number) => void;
   calculateBunkStatus: (attended: number, total: number, target?: number) => BunkCalculation;
@@ -463,11 +467,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updatedUser;
     });
 
-    if (updates.branch) {
-      if (CURRICULUM_DATA[updates.branch]) {
-        setSubjects(CURRICULUM_DATA[updates.branch]);
+    if (updates.branch || updates.semester !== undefined) {
+      const targetSem = updates.semester !== undefined ? updates.semester : (profile.semester || 1);
+      const targetBranch = updates.branch || profile.branch || 'Computer Science & Engineering (CSE)';
+      if (targetSem === 1 || targetSem === 2) {
+        setSubjects(FOUNDATION_ENGINEERING_SUBJECTS.slice(0, 5));
       } else {
-        setSubjects(CURRICULUM_DATA['B.Tech. Computer Science & Engineering'] || Object.values(CURRICULUM_DATA)[0]);
+        const branchSubs = getBranchSemesterSubjects(targetBranch, targetSem);
+        if (branchSubs && branchSubs.length > 0) {
+          setSubjects(branchSubs);
+        }
       }
     }
   };
@@ -959,7 +968,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Clean initial subjects and 0/0 attendance for selected semester
     const targetSem = userData.semester || 1;
-    const semSubjects = getCurriculumForSatiSemester(targetSem);
+    const semSubjects = (targetSem === 1 || targetSem === 2)
+      ? FOUNDATION_ENGINEERING_SUBJECTS.slice(0, 5)
+      : getBranchSemesterSubjects(newUser.branch, targetSem);
     setSubjects(semSubjects);
     localStorage.setItem(STORAGE_KEYS.SUBJECTS, JSON.stringify(semSubjects));
 
@@ -1160,6 +1171,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recalibrateNotice,
         clearRecalibrateNotice,
         subjects,
+        setSubjects,
         toggleTopicComplete,
         bandwidth,
         reflections,
@@ -1183,6 +1195,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsPersonalizationWizardOpen,
         // Attendance
         attendance,
+        setAttendance,
         markAttendance,
         adjustAttendanceCount,
         calculateBunkStatus,

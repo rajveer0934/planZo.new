@@ -32,6 +32,7 @@ import {
   getCurriculumForSatiSemester,
 } from '../data/satiVidishaData';
 import { FOUNDATION_ENGINEERING_SUBJECTS } from '../data/foundationSubjects';
+import { getBranchSemesterSubjects } from '../data/branchCurriculumData';
 import { SubjectCourse, SubjectAttendance, TimetableItem, ItemCategory } from '../types';
 import { playTaskCompleteSound } from '../utils/audioSynth';
 import { fireConfetti } from '../utils/audioVibes';
@@ -153,6 +154,8 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     updateProfile,
     timetable,
     setTimetable,
+    setSubjects,
+    setAttendance,
     setActiveView,
   } = useApp();
 
@@ -175,6 +178,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     'Information Technology (IT)',
     'Artificial Intelligence & Machine Learning (AIML)',
     'Artificial Intelligence & Data Science (AI & DS)',
+    'Internet of Things (IoT)',
     'Cyber Security',
     'Block Chain / Blockchain Technology',
     'Electronics & Communication Engineering (ECE)',
@@ -199,21 +203,53 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
   const [semester, setSemester] = useState<number>(profile.semester || 1);
   const [rollNo, setRollNo] = useState(profile.rollNo || '0108CS211045');
 
-  // Step 2: Foundation Engineering Subject Options Selection
-  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([
-    'sub-applied-chem',
-    'sub-applied-phys',
-    'sub-maths',
-    'sub-eng-comm',
-    'sub-basic-cs',
-  ]);
+  // Branch resolution & curriculum determination
+  const resolvedBranch = (branch === 'Other Engineering Branch (Custom)' || branch === 'OTHERS')
+    ? (customBranch.trim() || 'Engineering')
+    : (customBranch.trim() || branch || 'Computer Science & Engineering (CSE)');
+
+  // 1st or 2nd semester: Foundation engineering subjects
+  // 3rd or 4th semester (or higher): Branch-specific official subjects
+  const isFoundationYear = semester === 1 || semester === 2;
+
+  const currentAvailableSubjects = isFoundationYear
+    ? FOUNDATION_ENGINEERING_SUBJECTS
+    : getBranchSemesterSubjects(resolvedBranch, semester);
+
+  // Step 2: Subject Options Selection
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>(() => {
+    const isFound = (profile.semester || 1) <= 2;
+    if (isFound) {
+      return [
+        'sub-applied-chem',
+        'sub-applied-phys',
+        'sub-maths',
+        'sub-eng-comm',
+        'sub-basic-cs',
+      ];
+    }
+    const branchSubs = getBranchSemesterSubjects(
+      profile.branch || 'Computer Science & Engineering (CSE)',
+      profile.semester || 3
+    );
+    return branchSubs.map((s) => s.id);
+  });
+
   const [customSubjects, setCustomSubjects] = useState<SubjectCourse[]>([]);
   const [newSubjectTitle, setNewSubjectTitle] = useState('');
   const [newSubjectCode, setNewSubjectCode] = useState('');
   const [subjectSelectionError, setSubjectSelectionError] = useState<string | null>(null);
-  const [mostImportantTask, setMostImportantTask] = useState<string>(
-    profile.mostImportantTask || 'Basic Computer Science & C Programming'
-  );
+  const [mostImportantTask, setMostImportantTask] = useState<string>(() => {
+    const isFound = (profile.semester || 1) <= 2;
+    if (isFound) {
+      return profile.mostImportantTask || 'Basic Computer Science & C Programming';
+    }
+    const branchSubs = getBranchSemesterSubjects(
+      profile.branch || 'Computer Science & Engineering (CSE)',
+      profile.semester || 3
+    );
+    return profile.mostImportantTask || branchSubs[0]?.name || 'Discrete Mathematics';
+  });
 
   const toggleSubject = (subId: string) => {
     setSubjectSelectionError(null);
@@ -225,7 +261,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
   const handleSelectAllSubjects = () => {
     setSubjectSelectionError(null);
     const allIds = [
-      ...FOUNDATION_ENGINEERING_SUBJECTS.map((s) => s.id),
+      ...currentAvailableSubjects.map((s) => s.id),
       ...customSubjects.map((s) => s.id),
     ];
     setSelectedSubjectIds(allIds);
@@ -307,6 +343,38 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
 
   const handleSemesterChange = (newSem: number) => {
     setSemester(newSem);
+    setSubjectSelectionError(null);
+    if (newSem === 1 || newSem === 2) {
+      setSelectedSubjectIds([
+        'sub-applied-chem',
+        'sub-applied-phys',
+        'sub-maths',
+        'sub-eng-comm',
+        'sub-basic-cs',
+      ]);
+      setMostImportantTask('Basic Computer Science & C Programming');
+    } else {
+      const branchSubs = getBranchSemesterSubjects(resolvedBranch, newSem);
+      setSelectedSubjectIds(branchSubs.map((s) => s.id));
+      if (branchSubs.length > 0) {
+        setMostImportantTask(branchSubs[0].name);
+      }
+    }
+  };
+
+  const handleBranchChange = (newBranch: string) => {
+    setBranch(newBranch);
+    setSubjectSelectionError(null);
+    if (semester !== 1 && semester !== 2) {
+      const effBranch = (newBranch === 'Other Engineering Branch (Custom)' || newBranch === 'OTHERS')
+        ? (customBranch.trim() || 'Engineering')
+        : (customBranch.trim() || newBranch || 'Computer Science & Engineering (CSE)');
+      const branchSubs = getBranchSemesterSubjects(effBranch, semester);
+      setSelectedSubjectIds(branchSubs.map((s) => s.id));
+      if (branchSubs.length > 0) {
+        setMostImportantTask(branchSubs[0].name);
+      }
+    }
   };
 
   // Step 3: Timing & Goals (User configurable college timing, wake/sleep & primary focus)
@@ -339,9 +407,10 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
 
   // Compute final subject list from user selections
   const getCompiledSubjects = (): SubjectCourse[] => {
-    const allAvailable = [...FOUNDATION_ENGINEERING_SUBJECTS, ...customSubjects];
+    const allAvailable = [...currentAvailableSubjects, ...customSubjects];
     const selected = allAvailable.filter((sub) => selectedSubjectIds.includes(sub.id));
     if (selected.length > 0) return selected;
+    if (currentAvailableSubjects.length > 0) return [currentAvailableSubjects[0]];
     return [FOUNDATION_ENGINEERING_SUBJECTS[0]];
   };
 
