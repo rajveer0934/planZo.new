@@ -15,6 +15,14 @@ import {
   ChevronRight,
   Compass,
   Trophy,
+  Edit3,
+  Trash2,
+  Plus,
+  RotateCcw,
+  Laptop,
+  Coffee,
+  Square,
+  AlertCircle,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -23,7 +31,7 @@ import {
   getCurriculumForSatiSemester,
 } from '../data/satiVidishaData';
 import { FOUNDATION_ENGINEERING_SUBJECTS } from '../data/foundationSubjects';
-import { SubjectCourse, SubjectAttendance, TimetableItem } from '../types';
+import { SubjectCourse, SubjectAttendance, TimetableItem, ItemCategory } from '../types';
 import { playTaskCompleteSound } from '../utils/audioSynth';
 import { fireConfetti } from '../utils/audioVibes';
 
@@ -135,6 +143,8 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     currentUser,
     updateProfile,
     timetable,
+    setTimetable,
+    setActiveView,
   } = useApp();
 
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
@@ -323,13 +333,231 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     return [FOUNDATION_ENGINEERING_SUBJECTS[0]];
   };
 
+  // Step 6: Prepared Daily Tasks & Customization State
+  const [preparedTasks, setPreparedTasks] = useState<TimetableItem[]>([]);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editCategory, setEditCategory] = useState<ItemCategory>('study');
+  const [editStartTime, setEditStartTime] = useState('10:00');
+  const [editEndTime, setEditEndTime] = useState('17:00');
+
+  const [isAddingNewTask, setIsAddingNewTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskCategory, setNewTaskCategory] = useState<ItemCategory>('study');
+  const [newTaskStartTime, setNewTaskStartTime] = useState('18:00');
+  const [newTaskEndTime, setNewTaskEndTime] = useState('19:00');
+
+  // Generator: Prepares all tasks based on the student's inputs
+  // Key Requirement: College is ONLY ONE task for the whole college (NOT separate lectures)
+  // Timing of college is strictly according to the input taken by the user (collegeStartTime to collegeEndTime)
+  const generatePreparedTasks = (): TimetableItem[] => {
+    const resolvedCollege = college === 'OTHERS'
+      ? (customCollege.trim() || 'College')
+      : (customCollege.trim() || college || 'College');
+    const firstHabit = selectedHabits[0] || 'Morning Focus & Coding Practice';
+    const eveningHabit = selectedHabits[1] || selectedHabits[0] || 'Gym & Physical Fitness Routine';
+    const nightHabit = selectedHabits[selectedHabits.length - 1] || 'Day Review & Tomorrow Planning';
+    const compiled = getCompiledSubjects();
+
+    // 1. Calculate Morning Commute (30-45 min before college starts)
+    const [cStartH, cStartM] = (collegeStartTime || '10:00').split(':').map(Number);
+    let commuteMinutes = (cStartH || 10) * 60 + (cStartM || 0) - 45;
+    if (commuteMinutes < 300) commuteMinutes = 300;
+    const commuteH = Math.floor(commuteMinutes / 60);
+    const commuteM = commuteMinutes % 60;
+    const commuteStartStr = `${commuteH.toString().padStart(2, '0')}:${commuteM.toString().padStart(2, '0')}`;
+
+    // 2. Calculate Evening Study Block (45 min after college ends)
+    const [cEndH, cEndM] = (collegeEndTime || '17:00').split(':').map(Number);
+    let studyMinutes = (cEndH || 17) * 60 + (cEndM || 0) + 45;
+    if (studyMinutes >= 1440) studyMinutes = 1110;
+    const studyStartH = Math.floor(studyMinutes / 60);
+    const studyStartM = studyMinutes % 60;
+    const studyStartStr = `${studyStartH.toString().padStart(2, '0')}:${studyStartM.toString().padStart(2, '0')}`;
+
+    let studyEndMinutes = studyMinutes + 120;
+    if (studyEndMinutes >= 1440) studyEndMinutes = 1230;
+    const studyEndH = Math.floor(studyEndMinutes / 60);
+    const studyEndM = studyEndMinutes % 60;
+    const studyEndStr = `${studyEndH.toString().padStart(2, '0')}:${studyEndM.toString().padStart(2, '0')}`;
+
+    return [
+      {
+        id: 'prep-routine-1',
+        title: `Morning Kickoff & ${firstHabit}`,
+        category: 'habit',
+        startTime: wakeTime || '07:00',
+        endTime: commuteStartStr > (wakeTime || '07:00') ? commuteStartStr : '08:30',
+        completed: false,
+        cognitiveWeight: 2,
+        notes: 'Morning priming, hydration and personal discipline.',
+      },
+      {
+        id: 'prep-routine-2',
+        title: 'Breakfast & Commute to Campus',
+        category: 'chill',
+        startTime: commuteStartStr > (wakeTime || '07:00') ? commuteStartStr : '08:30',
+        endTime: collegeStartTime || '10:00',
+        completed: false,
+        cognitiveWeight: 1,
+        notes: 'Commute and prepare for the academic day.',
+      },
+      {
+        // --------------------------------------------------------------------------------------
+        // CRITICAL REQUIREMENT:
+        // College has ONLY ONE task for whole college, NOT for several lectures!
+        // Timing of college is according to user input (collegeStartTime to collegeEndTime).
+        // --------------------------------------------------------------------------------------
+        id: 'prep-routine-college',
+        title: `${resolvedCollege} — Full College Schedule (Lectures & Labs)`,
+        category: 'lecture',
+        startTime: collegeStartTime || '10:00',
+        endTime: collegeEndTime || '17:00',
+        completed: false,
+        cognitiveWeight: 4,
+        notes: `Unified college session covering all lectures, labs & practicals (${collegeStartTime} – ${collegeEndTime}). Mark once for the whole day.`,
+      },
+      {
+        id: 'prep-routine-3',
+        title: 'Campus Departure & Evening Refreshment',
+        category: 'chill',
+        startTime: collegeEndTime || '17:00',
+        endTime: studyStartStr,
+        completed: false,
+        cognitiveWeight: 1,
+        notes: 'Evening tea/refreshment & commute back.',
+      },
+      {
+        id: 'prep-routine-4',
+        title: primaryGoal === 'skills'
+          ? 'Evening Sprint: Skills Development (Coding, AI & Projects)'
+          : primaryGoal === 'other_studies'
+          ? 'Evening Focus: Other Studies with College (GATE, UPSC & Exam Prep)'
+          : primaryGoal === 'cgpa'
+          ? `Evening Study: ${compiled[0]?.name || 'Core Subjects'} & PYQs`
+          : primaryGoal === 'gate'
+          ? 'Evening Core CS Revision (Algorithms & Discrete Maths)'
+          : 'Evening Study: Topper Notes & Lab Work',
+        category: 'study',
+        startTime: studyStartStr,
+        endTime: studyEndStr,
+        completed: false,
+        cognitiveWeight: 4,
+        notes: 'High-focus deep work sprint.',
+      },
+      {
+        id: 'prep-routine-5',
+        title: eveningHabit,
+        category: 'habit',
+        startTime: studyEndStr,
+        endTime: '21:15',
+        completed: false,
+        cognitiveWeight: 2,
+        notes: 'Daily habit & personal wellness anchor.',
+      },
+      {
+        id: 'prep-routine-6',
+        title: 'Dinner & Mental Decompression',
+        category: 'chill',
+        startTime: '21:15',
+        endTime: '22:15',
+        completed: false,
+        cognitiveWeight: 1,
+        notes: 'Wind-down, dinner with friends or family.',
+      },
+      {
+        id: 'prep-routine-7',
+        title: `Night Wind-down: ${nightHabit} & Sleep`,
+        category: 'habit',
+        startTime: '22:15',
+        endTime: sleepTime || '23:30',
+        completed: false,
+        cognitiveWeight: 1,
+        notes: 'Tomorrow planning and restorative rest.',
+      },
+    ];
+  };
+
   const handleNextStep = () => {
     if (step === 2 && selectedSubjectIds.length === 0) {
       setSubjectSelectionError('Please select at least 1 subject from the options to proceed.');
       return;
     }
     setSubjectSelectionError(null);
+
+    // When advancing to Step 6 (Prepared Tasks slide), generate tasks if not customized
+    if (step === 5) {
+      if (preparedTasks.length === 0) {
+        setPreparedTasks(generatePreparedTasks());
+      }
+    }
+
     setStep((prev) => (prev + 1) as any);
+  };
+
+  // Toggle mark complete on prepared tasks (including single college task!)
+  const handleTogglePreparedTask = (taskId: string) => {
+    setPreparedTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, completed: !t.completed } : t))
+    );
+  };
+
+  // Start inline editing a task
+  const handleStartEdit = (task: TimetableItem) => {
+    setEditingTaskId(task.id);
+    setEditTitle(task.title);
+    setEditCategory(task.category);
+    setEditStartTime(task.startTime);
+    setEditEndTime(task.endTime);
+  };
+
+  // Save inline edit
+  const handleSaveEdit = (taskId: string) => {
+    if (!editTitle.trim()) return;
+    setPreparedTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              title: editTitle.trim(),
+              category: editCategory,
+              startTime: editStartTime,
+              endTime: editEndTime,
+            }
+          : t
+      )
+    );
+    setEditingTaskId(null);
+  };
+
+  // Delete a task from prepared schedule
+  const handleDeletePreparedTask = (taskId: string) => {
+    setPreparedTasks((prev) => prev.filter((t) => t.id !== taskId));
+  };
+
+  // Add custom task to prepared schedule
+  const handleAddNewTaskToSchedule = () => {
+    if (!newTaskTitle.trim()) return;
+    const newTask: TimetableItem = {
+      id: `prep-custom-${Date.now()}`,
+      title: newTaskTitle.trim(),
+      category: newTaskCategory,
+      startTime: newTaskStartTime,
+      endTime: newTaskEndTime,
+      completed: false,
+      cognitiveWeight: newTaskCategory === 'study' || newTaskCategory === 'lecture' || newTaskCategory === 'lab' ? 3 : 1,
+      notes: 'Custom task added by student.',
+    };
+    setPreparedTasks((prev) => [...prev, newTask].sort((a, b) => a.startTime.localeCompare(b.startTime)));
+    setNewTaskTitle('');
+    setIsAddingNewTask(false);
+  };
+
+  // Reset to default tasks generated from user inputs
+  const handleResetToDefaultTasks = () => {
+    setPreparedTasks(generatePreparedTasks());
+    setEditingTaskId(null);
+    setIsAddingNewTask(false);
   };
 
   const handleHabitToggle = (habitTitle: string) => {
@@ -358,178 +586,77 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     setSelectedHabits([]);
   };
 
+  // Finalize plan, save tasks, and NAVIGATE TO HOME PAGE
   const handleFinalizePlan = () => {
     setIsGenerating(true);
 
-    setTimeout(() => {
-      const compiledSubjects = getCompiledSubjects();
+    const compiledSubjects = getCompiledSubjects();
+    const finalSchedule = preparedTasks.length > 0 ? preparedTasks : generatePreparedTasks();
 
-      // 1. Build Personalized Timetable based on user's entered college hours
-      const personalizedTimetable: TimetableItem[] = [
-        {
-          id: 'routine-1',
-          title: `Morning Kickoff & ${selectedHabits[0] || 'Focus Study'}`,
-          category: 'habit',
-          startTime: wakeTime || '07:00',
-          endTime: '08:30',
-          completed: false, // Starts fresh!
-          cognitiveWeight: 2,
-        },
-        {
-          id: 'routine-2',
-          title: 'Breakfast & Commute to Campus',
-          category: 'chill',
-          startTime: '08:45',
-          endTime: collegeStartTime || '10:00',
-          completed: false, // Starts fresh!
-          cognitiveWeight: 1,
-        },
-        {
-          id: 'routine-3',
-          title: `${compiledSubjects[0]?.code || 'SUB-101'}: ${compiledSubjects[0]?.name || 'Department Lecture 1'}`,
-          category: 'lecture',
-          startTime: collegeStartTime || '10:00',
-          endTime: '11:45',
-          completed: false,
-          cognitiveWeight: 4,
-          subjectId: compiledSubjects[0]?.id,
-        },
-        {
-          id: 'routine-4',
-          title: `${compiledSubjects[1]?.code || 'SUB-102'}: ${compiledSubjects[1]?.name || 'Department Lecture 2'}`,
-          category: 'lecture',
-          startTime: '11:45',
-          endTime: '13:15',
-          completed: false,
-          cognitiveWeight: 3,
-          subjectId: compiledSubjects[1]?.id,
-        },
-        {
-          id: 'routine-5',
-          title: 'Campus Lunch Break & Peer Discussion',
-          category: 'chill',
-          startTime: '13:15',
-          endTime: '14:00',
-          completed: false,
-          cognitiveWeight: 1,
-        },
-        {
-          id: 'routine-6',
-          title: `${compiledSubjects.find((s) => s.id.includes('lab') || s.name.toLowerCase().includes('lab') || s.name.toLowerCase().includes('drawing') || s.name.toLowerCase().includes('graphics'))?.name || 'Department Practical Session & Labs'}`,
-          category: 'lab',
-          startTime: '14:00',
-          endTime: collegeEndTime || '17:00',
-          completed: false,
-          cognitiveWeight: 4,
-        },
-        {
-          id: 'routine-7',
-          title: 'Campus Departure & Evening Refreshment',
-          category: 'chill',
-          startTime: collegeEndTime || '17:00',
-          endTime: '18:15',
-          completed: false,
-          cognitiveWeight: 1,
-        },
-        {
-          id: 'routine-8',
-          title: primaryGoal === 'skills'
-            ? 'Evening Sprint: Skills Development (Coding, AI & Projects)'
-            : primaryGoal === 'other_studies'
-            ? 'Evening Focus: Other Studies with College (GATE, UPSC & Exam Prep)'
-            : primaryGoal === 'gate'
-            ? 'Evening Core CS Revision (Algorithms & Discrete Maths)'
-            : 'Evening Study: Topper Notes & Lab Assignment Submission',
-          category: 'study',
-          startTime: '18:45',
-          endTime: '21:00',
-          completed: false,
-          cognitiveWeight: 4,
-        },
-        {
-          id: 'routine-9',
-          title: 'Dinner, Family & Mental Decompression',
-          category: 'chill',
-          startTime: '21:00',
-          endTime: '22:00',
-          completed: false,
-          cognitiveWeight: 1,
-        },
-        {
-          id: 'routine-10',
-          title: `Night Review: ${selectedHabits[selectedHabits.length - 1] || "Tomorrow's Schedule Sync"} & Sleep`,
-          category: 'habit',
-          startTime: '22:15',
-          endTime: sleepTime || '23:30',
-          completed: false,
-          cognitiveWeight: 1,
-        },
-      ];
+    // Build Attendance Array (Starts at 0/0 unless user explicitly entered)
+    const newAttendanceList: SubjectAttendance[] = compiledSubjects.map((sub) => {
+      const recorded = attendanceValues[sub.id] || { attended: 0, total: 0 };
+      return {
+        subjectId: sub.id,
+        subjectCode: sub.code,
+        subjectName: sub.name,
+        attendedClasses: recorded.attended,
+        totalClasses: recorded.total,
+        isLab: sub.name.toLowerCase().includes('lab'),
+        professorName: 'Faculty',
+      };
+    });
 
-      // 2. Build Attendance Array (Starts at 0/0 unless user explicitly entered)
-      const newAttendanceList: SubjectAttendance[] = compiledSubjects.map((sub) => {
-        const recorded = attendanceValues[sub.id] || { attended: 0, total: 0 };
-        return {
-          subjectId: sub.id,
-          subjectCode: sub.code,
-          subjectName: sub.name,
-          attendedClasses: recorded.attended,
-          totalClasses: recorded.total,
-          isLab: sub.name.toLowerCase().includes('lab'),
-          professorName: 'Faculty',
-        };
-      });
+    // Save to localStorage & update profile
+    localStorage.setItem('planzo_subjects_v1', JSON.stringify(compiledSubjects));
+    localStorage.setItem('planzo_timetable_v1', JSON.stringify(finalSchedule));
+    localStorage.setItem('planzo_attendance_v1', JSON.stringify(newAttendanceList));
+    localStorage.setItem('planzo_folders_v1', JSON.stringify(SATI_SUBJECT_FOLDERS_DATA));
 
-      // 3. Save to localStorage & update profile
-      localStorage.setItem('planzo_subjects_v1', JSON.stringify(compiledSubjects));
-      localStorage.setItem('planzo_timetable_v1', JSON.stringify(personalizedTimetable));
-      localStorage.setItem('planzo_attendance_v1', JSON.stringify(newAttendanceList));
-      localStorage.setItem('planzo_folders_v1', JSON.stringify(SATI_SUBJECT_FOLDERS_DATA));
+    // Reset starting state for newly created account: 0 XP, 0 Streak, clean calendar!
+    localStorage.setItem('planzo_user_xp_v5', '0');
+    localStorage.setItem('planzo_user_streak_v5', '0');
+    const todayStr = new Date().toISOString().split('T')[0];
+    const initialTasks = {};
+    localStorage.setItem('planzo_scheduled_tasks_v5', JSON.stringify(initialTasks));
+    localStorage.setItem('planzo_tasks_v3', JSON.stringify(initialTasks));
 
-      // Reset starting state for newly created account: 0 XP, 0 Streak, clean calendar!
-      localStorage.setItem('planzo_user_xp_v5', '0');
-      localStorage.setItem('planzo_user_streak_v5', '0');
-      const todayStr = new Date().toISOString().split('T')[0];
-      const initialTasks = {}; // Starts with 0 tasks as requested
-      localStorage.setItem('planzo_scheduled_tasks_v5', JSON.stringify(initialTasks));
-      localStorage.setItem('planzo_tasks_v3', JSON.stringify(initialTasks));
+    const resolvedCollege = college === 'OTHERS' ? (customCollege.trim() || 'Engineering Institute') : college;
+    const resolvedBranch = (branch === 'Other Engineering Branch (Custom)' || branch === 'OTHERS')
+      ? (customBranch.trim() || 'Engineering')
+      : (customBranch.trim() || branch || 'Computer Science & Engineering (CSE)');
 
-      const resolvedCollege = college === 'OTHERS' ? (customCollege.trim() || 'Engineering Institute') : college;
-      const resolvedBranch = (branch === 'Other Engineering Branch (Custom)' || branch === 'OTHERS')
-        ? (customBranch.trim() || 'Engineering')
-        : (customBranch.trim() || branch || 'Computer Science & Engineering (CSE)');
+    updateProfile({
+      name: name.trim() || currentUser?.name || profile.name || 'Student',
+      college: resolvedCollege,
+      customCollege: resolvedCollege,
+      branch: resolvedBranch,
+      semester: semester,
+      rollNo: rollNo.trim(),
+      collegeStart: collegeStartTime,
+      collegeEnd: collegeEndTime,
+      wakeTime: wakeTime,
+      sleepTime: sleepTime,
+      selectedHabits: selectedHabits,
+      onboarded: true,
+      accountCreatedAt: todayStr,
+    });
 
-      updateProfile({
-        name: name.trim() || currentUser?.name || profile.name || 'Student',
-        college: resolvedCollege,
-        customCollege: resolvedCollege,
-        branch: resolvedBranch,
-        semester: semester,
-        rollNo: rollNo.trim(),
-        collegeStart: collegeStartTime,
-        collegeEnd: collegeEndTime,
-        wakeTime: wakeTime,
-        sleepTime: sleepTime,
-        selectedHabits: selectedHabits,
-        onboarded: true,
-        accountCreatedAt: todayStr,
-      });
+    // Directly update timetable state in AppContext
+    setTimetable(finalSchedule);
 
-      // Reload window softly to let all contexts hydrate with the new personalized SATI data
-      playTaskCompleteSound();
-      fireConfetti(80);
-      setIsGenerating(false);
+    // CRITICAL: Come to Home page after this all!
+    setActiveView('home');
 
-      if (onPlanGenerated) {
-        onPlanGenerated();
-      }
+    playTaskCompleteSound();
+    fireConfetti(80);
+    setIsGenerating(false);
 
-      onClose();
-      // Fast refresh to sync storage across all components
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
-    }, 1200);
+    if (onPlanGenerated) {
+      onPlanGenerated();
+    }
+
+    onClose();
   };
 
   return (
@@ -550,7 +677,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                   {step === 3 && '03 College Routine & Focus'}
                   {step === 4 && '04 Daily Discipline Habits'}
                   {step === 5 && '05 Current Attendance'}
-                  {step === 6 && '06 Confirm Workspace'}
+                  {step === 6 && '06 Prepared Tasks & Schedule'}
                 </span>
                 <span className="text-[11px] font-mono text-stone-400">
                   Step {step} of 6
@@ -1325,91 +1452,363 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* STEP 6: Confirmation & Dynamic Generation           */}
+        {/* STEP 6: Slide of All Tasks Prepared by the App      */}
         {/* ---------------------------------------------------- */}
         {step === 6 && (
-          <div className="space-y-5 animate-fadeIn text-xs text-center py-3">
-            <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-stone-950 flex items-center justify-center mx-auto shadow-xl shadow-emerald-500/25">
-              <Sparkles className="w-8 h-8 text-white animate-pulse" />
+          <div className="space-y-4 animate-fadeIn text-xs">
+            {/* Header & Context */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-stone-100 dark:border-stone-800">
+              <div>
+                <h3 className="font-bold text-sm sm:text-base text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                  <span>Prepared Daily Tasks</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300 font-bold border border-teal-500/30">
+                    {preparedTasks.length} Tasks Scheduled
+                  </span>
+                </h3>
+                <p className="text-stone-500 dark:text-stone-400 text-xs mt-0.5">
+                  Your customized daily routine. In this slide, your entire college is captured as <strong>one single task</strong> from {collegeStartTime} to {collegeEndTime}.
+                </p>
+              </div>
+
+              {/* Action Buttons for Tasks */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsAddingNewTask((prev) => !prev)}
+                  className="px-2.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-[11px] transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Add Task</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetToDefaultTasks}
+                  className="px-2.5 py-1.5 rounded-xl bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 font-semibold text-[11px] transition-colors flex items-center gap-1 cursor-pointer"
+                  title="Reset to recommended tasks based on your inputs"
+                >
+                  <RotateCcw className="w-3 h-3 text-stone-500" />
+                  <span>Reset</span>
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <h3 className="text-lg font-bold text-stone-900 dark:text-stone-100">
-                Your PlanZo workspace is ready.
-              </h3>
-              <p className="text-xs text-stone-500 dark:text-stone-400 max-w-md mx-auto">
-                Review your academic details below before activating your personalized dashboard.
+            {/* Explanatory Banner */}
+            <div className="p-3 rounded-xl border border-teal-500/30 bg-teal-50/60 dark:bg-teal-950/30 text-teal-950 dark:text-teal-200 text-xs space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
+                <span>One Unified College Task ({collegeStartTime} to {collegeEndTime})</span>
+              </div>
+              <p className="text-[11px] text-teal-800/90 dark:text-teal-300/80 leading-relaxed">
+                Rather than tracking separate fragmented lectures, college is represented as <strong>one task</strong> matching your entered hours ({collegeStartTime} – {collegeEndTime}). You can mark it once, modify any timings or titles, or add custom study sprints below.
               </p>
             </div>
 
-            {/* Summary Highlights */}
-            <div className="p-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 text-left space-y-2 font-mono text-[11px]">
-              <div className="flex items-center justify-between">
-                <span className="text-stone-500">Institute:</span>
-                <span className="font-bold text-stone-800 dark:text-stone-200">{customCollege || college || 'B.Tech Engineering'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-stone-500">Academic Year & Semester:</span>
-                <span className="font-bold text-teal-600 dark:text-teal-400">
-                  Semester {semester} · {branch === 'Other Engineering Branch (Custom)' ? (customBranch || 'Engineering') : branch}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-stone-500">Courses Mapped:</span>
-                <span className="font-bold text-stone-800 dark:text-stone-200">{getCompiledSubjects().length} Courses</span>
-              </div>
-              <div className="pt-1 border-t border-stone-200/60 dark:border-stone-800/60">
-                <span className="text-stone-500 text-[10px] block mb-1 font-mono uppercase font-bold">Enrolled Subjects:</span>
-                <div className="flex flex-wrap gap-1">
-                  {getCompiledSubjects().map((sub) => (
-                    <span
-                      key={sub.id}
-                      className="px-2 py-0.5 rounded-md bg-white dark:bg-stone-850 text-stone-800 dark:text-stone-200 text-[10px] font-medium border border-stone-200/80 dark:border-stone-750"
+            {/* Add Custom Task Form (When toggled) */}
+            {isAddingNewTask && (
+              <div className="p-3 rounded-xl border border-teal-500/40 bg-teal-50/40 dark:bg-teal-950/20 space-y-2.5 animate-fadeIn">
+                <div className="font-bold text-xs text-stone-900 dark:text-stone-100 flex items-center justify-between">
+                  <span>Add Custom Task to Daily Schedule</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingNewTask(false)}
+                    className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 text-[10px]"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-2">
+                    <input
+                      type="text"
+                      value={newTaskTitle}
+                      onChange={(e) => setNewTaskTitle(e.target.value)}
+                      placeholder="Task Title (e.g. Lab Manual Record, Gym Workout)..."
+                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 text-xs text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-teal-500"
+                    />
+                  </div>
+                  <div>
+                    <select
+                      value={newTaskCategory}
+                      onChange={(e) => setNewTaskCategory(e.target.value as ItemCategory)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 text-xs text-stone-900 dark:text-stone-100 font-medium cursor-pointer"
                     >
-                      {sub.code}: {sub.name}
-                    </span>
-                  ))}
+                      <option value="study">Deep Study</option>
+                      <option value="habit">Daily Habit</option>
+                      <option value="lecture">Lecture / College</option>
+                      <option value="lab">Practical / Lab</option>
+                      <option value="chill">Buffer / Chill</option>
+                      <option value="assignment">Assignment</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 text-[11px] font-mono text-stone-500">
+                      <span>From:</span>
+                      <input
+                        type="time"
+                        value={newTaskStartTime}
+                        onChange={(e) => setNewTaskStartTime(e.target.value)}
+                        className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 text-xs font-semibold text-stone-900 dark:text-stone-100"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] font-mono text-stone-500">
+                      <span>To:</span>
+                      <input
+                        type="time"
+                        value={newTaskEndTime}
+                        onChange={(e) => setNewTaskEndTime(e.target.value)}
+                        className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 text-xs font-semibold text-stone-900 dark:text-stone-100"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddNewTaskToSchedule}
+                    disabled={!newTaskTitle.trim()}
+                    className="px-3 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 disabled:opacity-40 text-white font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Add to Schedule
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-stone-500">College Schedule:</span>
-                <span className="font-bold text-stone-800 dark:text-stone-200">{collegeStartTime} to {collegeEndTime}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-stone-500">Primary Focus:</span>
-                <span className="font-bold capitalize text-cyan-600 dark:text-cyan-400">
-                  {primaryGoal === 'skills'
-                    ? 'Skills Development'
-                    : primaryGoal === 'other_studies'
-                    ? 'Other Studies with College'
-                    : primaryGoal === 'cgpa'
-                    ? '9+ CGPA Semester Topper'
-                    : primaryGoal === 'bunk'
-                    ? '75% Bunk Safe & Balanced'
-                    : 'Research & Core Engineering'}
-                </span>
-              </div>
-              <div className="pt-1 border-t border-stone-200/60 dark:border-stone-800/60">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-stone-500 text-[10px] font-mono uppercase font-bold">Daily Habits Tracked:</span>
-                  <span className="font-bold text-teal-600 dark:text-teal-400">{selectedHabits.length} Habits</span>
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {selectedHabits.map((habit) => (
-                    <span
-                      key={habit}
-                      className="px-2 py-0.5 rounded-md bg-white dark:bg-stone-850 text-teal-700 dark:text-teal-300 text-[10px] font-medium border border-teal-200/70 dark:border-teal-800/70"
-                    >
-                      ✓ {habit}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
+            )}
 
-            <p className="text-[11px] text-stone-400">
-              Clicking below will build your daily timetable, inject subject folders with official notes, and activate the 75% Bunk Simulator.
-            </p>
+            {/* List of Prepared Tasks */}
+            <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+              {preparedTasks.map((task) => {
+                const isCollegeTask = task.id.includes('college') || task.title.toLowerCase().includes('college');
+                const isEditing = editingTaskId === task.id;
+
+                if (isEditing) {
+                  return (
+                    <div
+                      key={task.id}
+                      className="p-3 rounded-xl border border-teal-500 bg-teal-50/50 dark:bg-teal-950/40 space-y-2.5 ring-2 ring-teal-500/20"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-teal-800 dark:text-teal-200">
+                          Editing Task
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEdit(task.id)}
+                            className="px-2 py-1 rounded bg-teal-700 hover:bg-teal-800 text-white font-bold text-[10px] cursor-pointer"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingTaskId(null)}
+                            className="px-2 py-1 rounded bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300 text-[10px] cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-semibold text-stone-900 dark:text-stone-100"
+                      />
+
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1 text-[11px] font-mono text-stone-500">
+                            <span>Start:</span>
+                            <input
+                              type="time"
+                              value={editStartTime}
+                              onChange={(e) => setEditStartTime(e.target.value)}
+                              className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-semibold"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1 text-[11px] font-mono text-stone-500">
+                            <span>End:</span>
+                            <input
+                              type="time"
+                              value={editEndTime}
+                              onChange={(e) => setEditEndTime(e.target.value)}
+                              className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-semibold"
+                            />
+                          </div>
+                        </div>
+
+                        <select
+                          value={editCategory}
+                          onChange={(e) => setEditCategory(e.target.value as ItemCategory)}
+                          className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-medium"
+                        >
+                          <option value="lecture">Lecture / College</option>
+                          <option value="study">Deep Study</option>
+                          <option value="habit">Daily Habit</option>
+                          <option value="lab">Practical / Lab</option>
+                          <option value="chill">Buffer / Chill</option>
+                          <option value="assignment">Assignment</option>
+                        </select>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // If this is the COLLEGE TASK:
+                if (isCollegeTask) {
+                  return (
+                    <div
+                      key={task.id}
+                      className={`p-3.5 rounded-2xl border transition-all flex flex-col gap-2.5 ${
+                        task.completed
+                          ? 'border-emerald-500/80 bg-emerald-50/70 dark:bg-emerald-950/40 shadow-xs'
+                          : 'border-teal-500/80 bg-teal-50/50 dark:border-teal-800/80 dark:bg-teal-950/30'
+                      }`}
+                    >
+                      {/* Top Header of College Block */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-700 text-white flex items-center gap-1">
+                            <span>🏫 Whole College Block</span>
+                          </span>
+                          <span className="text-xs font-mono font-bold text-teal-800 dark:text-teal-200">
+                            {task.startTime} – {task.endTime}
+                          </span>
+                        </div>
+
+                        {/* Edit & Delete Controls */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEdit(task)}
+                            className="p-1 rounded-md text-stone-500 hover:text-teal-700 dark:hover:text-teal-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
+                            title="Edit College Timings or Title"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePreparedTask(task.id)}
+                            className="p-1 rounded-md text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                            title="Remove Task"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Title & Unified explanation */}
+                      <div>
+                        <h4 className="font-bold text-sm text-stone-900 dark:text-stone-100">
+                          {task.title}
+                        </h4>
+                        <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
+                          Single unified task for your full college schedule. Mark once here or on your dashboard to cover all lectures and practicals.
+                        </p>
+                      </div>
+
+                      {/* THE SINGLE OPTION TO MARK WHOLE COLLEGE */}
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePreparedTask(task.id)}
+                          className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                            task.completed
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                              : 'bg-white dark:bg-stone-850 hover:bg-stone-100 dark:hover:bg-stone-800 text-teal-800 dark:text-teal-200 border border-teal-500/40 hover:border-teal-600 shadow-2xs'
+                          }`}
+                        >
+                          {task.completed ? (
+                            <>
+                              <CheckCircle2 className="w-4 h-4 fill-emerald-100 text-emerald-800 dark:fill-emerald-950 dark:text-emerald-300" />
+                              <span>✓ College Marked Present / Completed ({task.startTime} – {task.endTime})</span>
+                            </>
+                          ) : (
+                            <>
+                              <Square className="w-4 h-4 text-teal-700 dark:text-teal-400" />
+                              <span>Mark Whole College Attended ({task.startTime} – {task.endTime})</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // NON-COLLEGE TASKS:
+                return (
+                  <div
+                    key={task.id}
+                    className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                      task.completed
+                        ? 'border-stone-200 dark:border-stone-800 bg-stone-100/60 dark:bg-stone-900/30 opacity-75'
+                        : 'border-stone-200/90 dark:border-stone-800 bg-white dark:bg-stone-900/50 hover:border-teal-500/50'
+                    }`}
+                  >
+                    {/* Mark Checkbox */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePreparedTask(task.id)}
+                        className="text-stone-400 hover:text-teal-600 transition-colors shrink-0 cursor-pointer"
+                        title={task.completed ? 'Mark pending' : 'Mark completed'}
+                      >
+                        {task.completed ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                            task.category === 'study'
+                              ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200'
+                              : task.category === 'habit'
+                              ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200'
+                              : task.category === 'lab'
+                              ? 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200'
+                              : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
+                          }`}>
+                            {task.category}
+                          </span>
+                          <span className="text-[11px] font-mono font-bold text-stone-500 dark:text-stone-400">
+                            {task.startTime} – {task.endTime}
+                          </span>
+                        </div>
+
+                        <div className={`font-semibold text-xs mt-1 truncate ${
+                          task.completed ? 'line-through text-stone-400' : 'text-stone-900 dark:text-stone-100'
+                        }`}>
+                          {task.title}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Edit & Delete Controls */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(task)}
+                        className="p-1 rounded-md text-stone-400 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
+                        title="Edit Task"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePreparedTask(task.id)}
+                        className="p-1 rounded-md text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                        title="Delete Task"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -1440,7 +1839,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
             <button
               type="button"
               onClick={handleNextStep}
-              className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-xs"
+              className="px-6 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-xs"
             >
               <span>Next Step</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -1450,15 +1849,18 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
               type="button"
               onClick={handleFinalizePlan}
               disabled={isGenerating}
-              className="px-5 py-2.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-white text-white dark:text-stone-950 font-semibold text-xs flex items-center gap-2 cursor-pointer transition-colors shadow-xs"
+              className="px-5 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-2 cursor-pointer transition-all shadow-md shadow-teal-700/20 active:scale-95"
             >
               {isGenerating ? (
                 <>
-                  <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  <span>Configuring Timetable...</span>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Activating Workspace...</span>
                 </>
               ) : (
-                <span>Save & Activate Plan</span>
+                <>
+                  <span>Confirm Schedule & Go to Home Dashboard</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </>
               )}
             </button>
           )}
