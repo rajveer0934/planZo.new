@@ -1,0 +1,6 @@
+{
+  "name": "PlanZo",
+  "description": "PlanZo - Intelligent B.Tech Academic & Habit Companion for engineering students featuring automated syllabus planning, dynamic auto-correction, and mental bandwidth protection.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-display: 'Syne', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html.dark {
+  color-scheme: dark;
+  background-color: #090d16;
+  color: #f8fafc;
+}
+
+html:not(.dark) {
+  color-scheme: light;
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+@layer utilities {
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Subtle, production-grade micro-interactions */
+.ui-card {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ui-card:hover {
+  border-color: rgba(13, 148, 136, 0.4);
+}
+
+.ui-btn-primary {
+  transition: all 0.15s ease;
+}
+.ui-btn-primary:hover {
+  filter: brightness(1.05);
+}
+.ui-btn-primary:active {
+  transform: scale(0.98);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
