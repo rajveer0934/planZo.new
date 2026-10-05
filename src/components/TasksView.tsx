@@ -14,10 +14,13 @@ import {
   Calendar,
   AlertCircle,
   Tag,
+  Edit3,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { playTaskCompleteSound } from '../utils/audioSynth';
 import { fireConfetti } from '../utils/audioVibes';
-import { TimetableItem } from '../types';
+import { TimetableItem, ItemCategory } from '../types';
 
 interface TasksViewProps {
   onOpenAddTaskModal: () => void;
@@ -26,6 +29,7 @@ interface TasksViewProps {
 export const TasksView: React.FC<TasksViewProps> = ({ onOpenAddTaskModal }) => {
   const {
     timetable,
+    setTimetable,
     toggleItemComplete,
     snoozeItem,
     shiftItemToEvening,
@@ -35,6 +39,59 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenAddTaskModal }) => {
 
   const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'completed'>('today');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'study' | 'habit' | 'assignment'>('all');
+
+  // Inline Task Editing State
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editCategory, setEditCategory] = useState<ItemCategory>('study');
+  const [editStartTime, setEditStartTime] = useState('10:00');
+  const [editEndTime, setEditEndTime] = useState('11:00');
+  const [editWeight, setEditWeight] = useState(3);
+  const [editTopic, setEditTopic] = useState('');
+
+  const handleStartEdit = (item: TimetableItem) => {
+    setEditingTaskId(item.id);
+    setEditTitle(item.title);
+    setEditCategory(item.category);
+    setEditStartTime(item.startTime);
+    setEditEndTime(item.endTime);
+    setEditWeight(item.cognitiveWeight || 3);
+    setEditTopic(item.topic || '');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTaskId(null);
+  };
+
+  const handleSaveEdit = (taskId: string) => {
+    if (!editTitle.trim()) return;
+    setTimetable((prev) =>
+      prev
+        .map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                title: editTitle.trim(),
+                category: editCategory,
+                startTime: editStartTime || t.startTime,
+                endTime: editEndTime || t.endTime,
+                cognitiveWeight: editWeight,
+                topic: editTopic.trim() || undefined,
+              }
+            : t
+        )
+        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+    );
+    setEditingTaskId(null);
+    playTaskCompleteSound();
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    setTimetable((prev) => prev.filter((t) => t.id !== taskId));
+    if (editingTaskId === taskId) {
+      setEditingTaskId(null);
+    }
+  };
 
   const handleToggle = (item: TimetableItem) => {
     if (!item.completed) {
@@ -192,6 +249,146 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenAddTaskModal }) => {
             const isCompleted = item.completed;
             const priority = getPriority(item.cognitiveWeight || 2);
 
+            if (editingTaskId === item.id) {
+              return (
+                <div
+                  key={item.id}
+                  className="p-4 rounded-xl border border-teal-500/80 bg-teal-50/50 dark:bg-teal-950/40 ring-2 ring-teal-500/20 space-y-3 shadow-xs animate-fadeIn"
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-teal-500/20">
+                    <div className="flex items-center gap-2">
+                      <span className="w-7 h-7 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold">
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </span>
+                      <div>
+                        <h4 className="text-xs font-bold text-stone-900 dark:text-stone-100">
+                          Edit Task & Schedule Details
+                        </h4>
+                        <span className="text-[10px] text-stone-500 dark:text-stone-400">
+                          Modify title, timings, category, and priority level
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSaveEdit(item.id)}
+                        className="px-3 py-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs flex items-center gap-1 cursor-pointer shadow-xs transition-colors"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Save</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 text-xs font-semibold cursor-pointer transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTask(item.id)}
+                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                        title="Delete task"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Task Name Input */}
+                  <div>
+                    <label className="text-[11px] font-semibold text-stone-700 dark:text-stone-300 block mb-1">
+                      Task Name / Subject
+                    </label>
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      placeholder="e.g. Mathematics - I Problem Set, DSA Binary Trees..."
+                      className="w-full px-3 py-2 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-semibold text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+
+                  {/* Timing & Category & Priority Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                    <div>
+                      <label className="text-[10px] font-semibold text-stone-500 dark:text-stone-400 block mb-1">
+                        Start Time
+                      </label>
+                      <input
+                        type="time"
+                        value={editStartTime}
+                        onChange={(e) => setEditStartTime(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-mono font-semibold text-stone-900 dark:text-stone-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-semibold text-stone-500 dark:text-stone-400 block mb-1">
+                        End Time
+                      </label>
+                      <input
+                        type="time"
+                        value={editEndTime}
+                        onChange={(e) => setEditEndTime(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-mono font-semibold text-stone-900 dark:text-stone-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-semibold text-stone-500 dark:text-stone-400 block mb-1">
+                        Category
+                      </label>
+                      <select
+                        value={editCategory}
+                        onChange={(e) => setEditCategory(e.target.value as ItemCategory)}
+                        className="w-full px-2 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-semibold text-stone-900 dark:text-stone-100 cursor-pointer"
+                      >
+                        <option value="study">Deep Study</option>
+                        <option value="lecture">Lecture / College</option>
+                        <option value="lab">College Lab / Practical</option>
+                        <option value="habit">Daily Habit</option>
+                        <option value="chill">Buffer Zone / Chill</option>
+                        <option value="assignment">Assignment</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-semibold text-stone-500 dark:text-stone-400 block mb-1">
+                        Priority Level
+                      </label>
+                      <select
+                        value={editWeight}
+                        onChange={(e) => setEditWeight(Number(e.target.value))}
+                        className="w-full px-2 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-semibold text-stone-900 dark:text-stone-100 cursor-pointer"
+                      >
+                        <option value={4}>High Priority (Urgent)</option>
+                        <option value={3}>Medium Priority</option>
+                        <option value={2}>Normal Priority</option>
+                        <option value={1}>Low Priority</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Topic / Details */}
+                  <div>
+                    <label className="text-[10px] font-semibold text-stone-500 dark:text-stone-400 block mb-1">
+                      Topic / Focus Note (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={editTopic}
+                      onChange={(e) => setEditTopic(e.target.value)}
+                      placeholder="e.g. Unit 2 Integration, LeetCode Binary Search, Lab Record..."
+                      className="w-full px-3 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs text-stone-800 dark:text-stone-200 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div
                 key={item.id}
@@ -238,7 +435,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenAddTaskModal }) => {
                 </div>
 
                 {/* Right: Priority Badge & Actions */}
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                   <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded border ${priority.class}`}>
                     {priority.label}
                   </span>
@@ -262,6 +459,25 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenAddTaskModal }) => {
                       <RotateCcw className="w-3.5 h-3.5" />
                     </button>
                   )}
+
+                  {/* Edit Option Button */}
+                  <button
+                    onClick={() => handleStartEdit(item)}
+                    className="p-1.5 rounded-lg text-stone-500 hover:text-teal-700 dark:hover:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/50 border border-transparent hover:border-teal-200 dark:hover:border-teal-800 transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold"
+                    title="Edit task name, timings and details"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Edit</span>
+                  </button>
+
+                  {/* Delete Option Button */}
+                  <button
+                    onClick={() => handleDeleteTask(item.id)}
+                    className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors cursor-pointer"
+                    title="Delete task from schedule"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             );

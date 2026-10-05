@@ -74,6 +74,8 @@ export interface StudentProfile {
   selectedHabits: string[];
   onboarded: boolean;
   rollNo?: string;
+  mostImportantTask?: string;
+  primaryGoal?: string;
   accountCreatedAt?: string; // YYYY-MM-DD
 }
 

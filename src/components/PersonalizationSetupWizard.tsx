@@ -23,6 +23,7 @@ import {
   Coffee,
   Square,
   AlertCircle,
+  Star,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -202,6 +203,9 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
   const [newSubjectTitle, setNewSubjectTitle] = useState('');
   const [newSubjectCode, setNewSubjectCode] = useState('');
   const [subjectSelectionError, setSubjectSelectionError] = useState<string | null>(null);
+  const [mostImportantTask, setMostImportantTask] = useState<string>(
+    profile.mostImportantTask || 'Basic Computer Science & C Programming'
+  );
 
   const toggleSubject = (subId: string) => {
     setSubjectSelectionError(null);
@@ -347,135 +351,304 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
   const [newTaskStartTime, setNewTaskStartTime] = useState('18:00');
   const [newTaskEndTime, setNewTaskEndTime] = useState('19:00');
 
-  // Generator: Prepares all tasks based on the student's inputs
-  // Key Requirement: College is ONLY ONE task for the whole college (NOT separate lectures)
-  // Timing of college is strictly according to the input taken by the user (collegeStartTime to collegeEndTime)
+  // Helper: Parse HH:MM to total minutes from 00:00
+  const parseTimeToMinutes = (t: string): number => {
+    if (!t) return 0;
+    const parts = t.split(':').map(Number);
+    return (parts[0] || 0) * 60 + (parts[1] || 0);
+  };
+
+  // Helper: Format total minutes to HH:MM (00:00 to 23:59)
+  const formatMinutesToTime = (mins: number): string => {
+    const bounded = Math.max(0, Math.min(1439, Math.round(mins)));
+    const h = Math.floor(bounded / 60);
+    const m = bounded % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  };
+
+  // Validation & Conflict-Resolution Engine:
+  // Strictly enforces:
+  // 1. No two tasks overlap in time.
+  // 2. Exactly one active task per time period.
+  // 3. College is strictly one unified block with user's exact collegeStartTime & collegeEndTime.
+  // 4. All tasks sequentially ordered from wake-up to bedtime.
+  const validateAndResolveSchedule = (
+    tasks: TimetableItem[],
+    cStart: string,
+    cEnd: string
+  ): TimetableItem[] => {
+    if (!tasks || tasks.length === 0) return [];
+
+    // Ensure college block matches exact user inputs
+    const updated = tasks.map((t) => {
+      if (t.id.includes('college') || t.category === 'lecture' || t.title.toLowerCase().includes('college')) {
+        return {
+          ...t,
+          category: 'lecture' as ItemCategory,
+          startTime: cStart,
+          endTime: cEnd,
+        };
+      }
+      return t;
+    });
+
+    // Sort strictly by startTime
+    const sorted = [...updated].sort(
+      (a, b) => parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)
+    );
+
+    const resolved: TimetableItem[] = [];
+    for (let i = 0; i < sorted.length; i++) {
+      const cur = { ...sorted[i] };
+      const curStartM = parseTimeToMinutes(cur.startTime);
+      let curEndM = parseTimeToMinutes(cur.endTime);
+
+      if (curEndM <= curStartM) {
+        curEndM = curStartM + 45;
+      }
+
+      if (resolved.length > 0) {
+        const prev = resolved[resolved.length - 1];
+        const prevEndM = parseTimeToMinutes(prev.endTime);
+
+        if (curStartM < prevEndM) {
+          // CONFLICT DETECTED: Automatically push cur.startTime to prevEndM
+          const duration = Math.max(25, curEndM - curStartM);
+          const newStartM = prevEndM;
+          const newEndM = Math.min(1439, newStartM + duration);
+          cur.startTime = formatMinutesToTime(newStartM);
+          cur.endTime = formatMinutesToTime(newEndM);
+        }
+      }
+
+      resolved.push(cur);
+    }
+
+    return resolved;
+  };
+
+  // Generator: Creates conflict-free daily tasks adhering to scheduling rules:
+  // 1. Task Duration: ~50m normal tasks, >=45m for study tasks.
+  // 2. Most Important Task: 1 morning session (~1h) + 1 evening session (~1h).
+  // 3. Primary Semester Focus: Dedicated 1h 30m (90m) priority study block.
+  // 4. No Overlapping: strictly sequential, conflict-free.
+  // 5. College is ONE single task matching user's exact collegeStartTime & collegeEndTime.
+  // 6. User's chosen subjects only.
+  // 7. Realistic breaks (breakfast, commute, refreshment, dinner, wind-down).
   const generatePreparedTasks = (): TimetableItem[] => {
     const resolvedCollege = college === 'OTHERS'
       ? (customCollege.trim() || 'College')
       : (customCollege.trim() || college || 'College');
-    const firstHabit = selectedHabits[0] || 'Morning Focus & Coding Practice';
-    const eveningHabit = selectedHabits[1] || selectedHabits[0] || 'Gym & Physical Fitness Routine';
+    const firstHabit = selectedHabits[0] || 'Morning Focus & Physical Discipline';
     const nightHabit = selectedHabits[selectedHabits.length - 1] || 'Day Review & Tomorrow Planning';
     const compiled = getCompiledSubjects();
 
-    // 1. Calculate Morning Commute (30-45 min before college starts)
-    const [cStartH, cStartM] = (collegeStartTime || '10:00').split(':').map(Number);
-    let commuteMinutes = (cStartH || 10) * 60 + (cStartM || 0) - 45;
-    if (commuteMinutes < 300) commuteMinutes = 300;
-    const commuteH = Math.floor(commuteMinutes / 60);
-    const commuteM = commuteMinutes % 60;
-    const commuteStartStr = `${commuteH.toString().padStart(2, '0')}:${commuteM.toString().padStart(2, '0')}`;
+    // Determine the user's selected Most Important Task
+    const chosenMit = mostImportantTask.trim() || compiled[0]?.name || 'C Programming';
 
-    // 2. Calculate Evening Study Block (45 min after college ends)
-    const [cEndH, cEndM] = (collegeEndTime || '17:00').split(':').map(Number);
-    let studyMinutes = (cEndH || 17) * 60 + (cEndM || 0) + 45;
-    if (studyMinutes >= 1440) studyMinutes = 1110;
-    const studyStartH = Math.floor(studyMinutes / 60);
-    const studyStartM = studyMinutes % 60;
-    const studyStartStr = `${studyStartH.toString().padStart(2, '0')}:${studyStartM.toString().padStart(2, '0')}`;
+    const wakeM = parseTimeToMinutes(wakeTime || '07:00');
+    const cStartM = parseTimeToMinutes(collegeStartTime || '10:00');
+    const cEndM = parseTimeToMinutes(collegeEndTime || '17:00');
+    const sleepM = parseTimeToMinutes(sleepTime || '23:30');
 
-    let studyEndMinutes = studyMinutes + 120;
-    if (studyEndMinutes >= 1440) studyEndMinutes = 1230;
-    const studyEndH = Math.floor(studyEndMinutes / 60);
-    const studyEndM = studyEndMinutes % 60;
-    const studyEndStr = `${studyEndH.toString().padStart(2, '0')}:${studyEndM.toString().padStart(2, '0')}`;
+    const draftTasks: TimetableItem[] = [];
 
-    return [
-      {
-        id: 'prep-routine-1',
-        title: `Morning Kickoff & ${firstHabit}`,
-        category: 'habit',
-        startTime: wakeTime || '07:00',
-        endTime: commuteStartStr > (wakeTime || '07:00') ? commuteStartStr : '08:30',
-        completed: false,
-        cognitiveWeight: 2,
-        notes: 'Morning priming, hydration and personal discipline.',
-      },
-      {
-        id: 'prep-routine-2',
-        title: 'Breakfast & Commute to Campus',
-        category: 'chill',
-        startTime: commuteStartStr > (wakeTime || '07:00') ? commuteStartStr : '08:30',
-        endTime: collegeStartTime || '10:00',
-        completed: false,
-        cognitiveWeight: 1,
-        notes: 'Commute and prepare for the academic day.',
-      },
-      {
-        // --------------------------------------------------------------------------------------
-        // CRITICAL REQUIREMENT:
-        // College has ONLY ONE task for whole college, NOT for several lectures!
-        // Timing of college is according to user input (collegeStartTime to collegeEndTime).
-        // --------------------------------------------------------------------------------------
-        id: 'prep-routine-college',
-        title: `${resolvedCollege} — Full College Schedule (Lectures & Labs)`,
-        category: 'lecture',
-        startTime: collegeStartTime || '10:00',
-        endTime: collegeEndTime || '17:00',
-        completed: false,
-        cognitiveWeight: 4,
-        notes: `Unified college session covering all lectures, labs & practicals (${collegeStartTime} – ${collegeEndTime}). Mark once for the whole day.`,
-      },
-      {
-        id: 'prep-routine-3',
-        title: 'Campus Departure & Evening Refreshment',
-        category: 'chill',
-        startTime: collegeEndTime || '17:00',
-        endTime: studyStartStr,
-        completed: false,
-        cognitiveWeight: 1,
-        notes: 'Evening tea/refreshment & commute back.',
-      },
-      {
-        id: 'prep-routine-4',
-        title: primaryGoal === 'skills'
-          ? 'Evening Sprint: Skills Development (Coding, AI & Projects)'
-          : primaryGoal === 'other_studies'
-          ? 'Evening Focus: Other Studies with College (GATE, UPSC & Exam Prep)'
-          : primaryGoal === 'cgpa'
-          ? `Evening Study: ${compiled[0]?.name || 'Core Subjects'} & PYQs`
-          : primaryGoal === 'gate'
-          ? 'Evening Core CS Revision (Algorithms & Discrete Maths)'
-          : 'Evening Study: Topper Notes & Lab Work',
-        category: 'study',
-        startTime: studyStartStr,
-        endTime: studyEndStr,
-        completed: false,
-        cognitiveWeight: 4,
-        notes: 'High-focus deep work sprint.',
-      },
-      {
-        id: 'prep-routine-5',
-        title: eveningHabit,
-        category: 'habit',
-        startTime: studyEndStr,
-        endTime: '21:15',
-        completed: false,
-        cognitiveWeight: 2,
-        notes: 'Daily habit & personal wellness anchor.',
-      },
-      {
-        id: 'prep-routine-6',
-        title: 'Dinner & Mental Decompression',
-        category: 'chill',
-        startTime: '21:15',
-        endTime: '22:15',
-        completed: false,
-        cognitiveWeight: 1,
-        notes: 'Wind-down, dinner with friends or family.',
-      },
-      {
-        id: 'prep-routine-7',
-        title: `Night Wind-down: ${nightHabit} & Sleep`,
-        category: 'habit',
-        startTime: '22:15',
-        endTime: sleepTime || '23:30',
-        completed: false,
-        cognitiveWeight: 1,
-        notes: 'Tomorrow planning and restorative rest.',
-      },
-    ];
+    // =========================================================================
+    // 1. MORNING SEGMENT (wakeM -> cStartM)
+    // - Morning Kickoff & Personal Discipline (25m)
+    // - ⭐ Most Important Task (Morning Priority Session): ~1 hour (60 min)
+    // - Breakfast, Campus Commute & Buffer (realistic gap before college)
+    // =========================================================================
+    const availMorning = Math.max(90, cStartM - wakeM);
+    let morningCursor = wakeM;
+
+    // Morning Kickoff / Habit (25m)
+    const morningPrepDur = availMorning >= 120 ? 30 : 15;
+    draftTasks.push({
+      id: 'prep-routine-1',
+      title: `Morning Kickoff & ${firstHabit}`,
+      category: 'habit',
+      startTime: formatMinutesToTime(morningCursor),
+      endTime: formatMinutesToTime(morningCursor + morningPrepDur),
+      completed: false,
+      cognitiveWeight: 2,
+      notes: 'Morning priming, hydration and personal discipline.',
+    });
+    morningCursor += morningPrepDur;
+
+    // ⭐ Most Important Task - Morning Priority Session (~1 hour / 60 min, at least 45-50m)
+    const mitMorningDur = availMorning >= 140 ? 60 : Math.max(45, Math.min(60, availMorning - morningPrepDur - 30));
+    draftTasks.push({
+      id: 'prep-routine-mit-morning',
+      title: `⭐ Morning Deep Work: ${chosenMit} (Priority Session)`,
+      category: 'study',
+      startTime: formatMinutesToTime(morningCursor),
+      endTime: formatMinutesToTime(morningCursor + mitMorningDur),
+      completed: false,
+      cognitiveWeight: 4,
+      notes: `Dedicated morning 1-hour priority deep work on your Most Important Task (${chosenMit}).`,
+    });
+    morningCursor += mitMorningDur;
+
+    // Breakfast & Commute to Campus (realistic break & travel before college)
+    draftTasks.push({
+      id: 'prep-routine-2',
+      title: 'Breakfast & Commute to Campus',
+      category: 'chill',
+      startTime: formatMinutesToTime(morningCursor),
+      endTime: formatMinutesToTime(cStartM),
+      completed: false,
+      cognitiveWeight: 1,
+      notes: 'Nutritious breakfast, travel to campus, and settling in for lectures.',
+    });
+
+    // =========================================================================
+    // 2. COLLEGE BLOCK (cStartM -> cEndM)
+    // - Exactly ONE unified task for the entire college duration
+    // - Timing strictly matches user's collegeStartTime & collegeEndTime
+    // =========================================================================
+    draftTasks.push({
+      id: 'prep-routine-college',
+      title: `${resolvedCollege} — Full College Schedule (Lectures & Labs)`,
+      category: 'lecture',
+      startTime: collegeStartTime || '10:00',
+      endTime: collegeEndTime || '17:00',
+      completed: false,
+      cognitiveWeight: 4,
+      notes: `Unified college session covering all lectures, labs & practicals (${collegeStartTime} – ${collegeEndTime}). Mark once for the whole day.`,
+    });
+
+    // =========================================================================
+    // 3. EVENING & NIGHT SEGMENT (cEndM -> sleepM)
+    // - Campus Departure & Evening Chai / Refreshment (40m)
+    // - 🎯 Primary Semester Focus: Dedicated 1h 30m priority study block (90m)
+    // - Breather / Screen Break (15m)
+    // - ⭐ Most Important Task (Evening Priority Session): ~1 hour (60m)
+    // - Dinner & Relaxation (45m)
+    // - Additional Study Task (User's other chosen subject): ~50m (if time permits)
+    // - Night Wind-down & Rest
+    // =========================================================================
+    let eveningCursor = cEndM;
+
+    // A. Campus Departure & Evening Refreshment (40m break)
+    const departureEnd = Math.min(eveningCursor + 40, sleepM - 190);
+    draftTasks.push({
+      id: 'prep-routine-3',
+      title: 'Campus Departure & Evening Chai / Refreshment',
+      category: 'chill',
+      startTime: formatMinutesToTime(eveningCursor),
+      endTime: formatMinutesToTime(departureEnd),
+      completed: false,
+      cognitiveWeight: 1,
+      notes: 'Evening tea, decompression and transition back from campus.',
+    });
+    eveningCursor = departureEnd;
+
+    // B. 🎯 Primary Semester Focus: 1 Hour 30 Minutes (90 min) Dedicated Study Block
+    const secondarySub = compiled.find((s) => s.name.toLowerCase() !== chosenMit.toLowerCase()) || compiled[0];
+    let focusTitle = `🎯 Primary Semester Focus: Skills & Practical Coding Sprint (${chosenMit})`;
+    if (primaryGoal === 'cgpa') {
+      focusTitle = `🎯 Primary Focus: ${secondarySub?.name || compiled[0]?.name || 'Core Syllabus'} Theory & PYQs`;
+    } else if (primaryGoal === 'other_studies') {
+      focusTitle = '🎯 Primary Focus: GATE & Competitive Exam Foundation Sprint';
+    } else if (primaryGoal === 'gate') {
+      focusTitle = `🎯 Primary Focus: Core Engineering Revision & Numericals (${chosenMit})`;
+    } else if (primaryGoal === 'bunk') {
+      focusTitle = '🎯 Primary Focus: High-Yield Academic Coverage & Assignment Sprint';
+    }
+
+    const primaryFocusDur = 90; // Exactly 1 hour 30 minutes
+    draftTasks.push({
+      id: 'prep-routine-primary-focus',
+      title: focusTitle,
+      category: 'study',
+      startTime: formatMinutesToTime(eveningCursor),
+      endTime: formatMinutesToTime(eveningCursor + primaryFocusDur),
+      completed: false,
+      cognitiveWeight: 4,
+      notes: 'Dedicated 1 hour 30 minutes priority study block aligned with your primary semester focus.',
+    });
+    eveningCursor += primaryFocusDur;
+
+    // C. Short Breather / Hydration Break (15m)
+    const breakDur = 15;
+    draftTasks.push({
+      id: 'prep-routine-breather',
+      title: 'Hydration & Mindful Screen Break',
+      category: 'chill',
+      startTime: formatMinutesToTime(eveningCursor),
+      endTime: formatMinutesToTime(eveningCursor + breakDur),
+      completed: false,
+      cognitiveWeight: 1,
+      notes: 'Short buffer break to reset focus before the next sprint.',
+    });
+    eveningCursor += breakDur;
+
+    // D. ⭐ Most Important Task - Evening Priority Session (~1 hour / 60 min)
+    const mitEveningDur = 60; // 1 hour
+    draftTasks.push({
+      id: 'prep-routine-mit-evening',
+      title: `⭐ Evening Deep Work: ${chosenMit} (Session 2)`,
+      category: 'study',
+      startTime: formatMinutesToTime(eveningCursor),
+      endTime: formatMinutesToTime(eveningCursor + mitEveningDur),
+      completed: false,
+      cognitiveWeight: 4,
+      notes: `Second dedicated 1-hour session for your Most Important Task (${chosenMit}).`,
+    });
+    eveningCursor += mitEveningDur;
+
+    // E. Dinner & Relaxation (45m break)
+    const dinnerDur = 45;
+    draftTasks.push({
+      id: 'prep-routine-dinner',
+      title: 'Dinner & Mindful Decompression',
+      category: 'chill',
+      startTime: formatMinutesToTime(eveningCursor),
+      endTime: formatMinutesToTime(eveningCursor + dinnerDur),
+      completed: false,
+      cognitiveWeight: 1,
+      notes: 'Dinner with friends or family, and evening wind-down.',
+    });
+    eveningCursor += dinnerDur;
+
+    // F. Additional User-Selected Subject Task (50 min) - ONLY if sufficient time before sleep
+    const remainingBeforeSleep = sleepM - eveningCursor;
+    if (remainingBeforeSleep >= 80 && compiled.length > 1) {
+      const thirdSub = compiled.find(
+        (s) => s.name.toLowerCase() !== chosenMit.toLowerCase() && s.name !== secondarySub?.name
+      ) || secondarySub;
+
+      if (thirdSub) {
+        const extraStudyDur = 50; // Exactly 50 minutes (~50 min, >= 45 min)
+        draftTasks.push({
+          id: 'prep-routine-additional-study',
+          title: `Academic Study: ${thirdSub.name} (Core Review)`,
+          category: 'study',
+          startTime: formatMinutesToTime(eveningCursor),
+          endTime: formatMinutesToTime(eveningCursor + extraStudyDur),
+          completed: false,
+          cognitiveWeight: 3,
+          notes: `50-minute focused study session on ${thirdSub.name} from your chosen subjects.`,
+        });
+        eveningCursor += extraStudyDur;
+      }
+    }
+
+    // G. Night Wind-down & Rest
+    draftTasks.push({
+      id: 'prep-routine-night',
+      title: `Night Wind-down: ${nightHabit} & Sleep`,
+      category: 'habit',
+      startTime: formatMinutesToTime(eveningCursor),
+      endTime: sleepTime || '23:30',
+      completed: false,
+      cognitiveWeight: 1,
+      notes: 'Reflection, gratitude, preparing for tomorrow and restorative sleep.',
+    });
+
+    // Run conflict resolution & final validation
+    return validateAndResolveSchedule(draftTasks, collegeStartTime || '10:00', collegeEndTime || '17:00');
   };
 
   const handleNextStep = () => {
@@ -485,29 +658,10 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     }
     setSubjectSelectionError(null);
 
-    // When advancing to Step 6 (Prepared Tasks slide), always ensure tasks reflect user's latest inputs
+    // When advancing to Step 6 (Review & Customize Your Plan), always generate from latest inputs
     if (step === 5) {
       const generated = generatePreparedTasks();
-      if (preparedTasks.length === 0) {
-        setPreparedTasks(generated);
-      } else {
-        // Synchronize college task with updated collegeStartTime and collegeEndTime
-        setPreparedTasks((prev) =>
-          prev.map((t) => {
-            if (t.id.includes('college') || t.category === 'lecture') {
-              const matchingCollege = generated.find((g) => g.id.includes('college'));
-              return {
-                ...t,
-                startTime: collegeStartTime || '10:00',
-                endTime: collegeEndTime || '17:00',
-                title: matchingCollege?.title || t.title,
-                notes: `Unified college session covering all lectures, labs & practicals (${collegeStartTime} – ${collegeEndTime}). Mark once for the whole day.`,
-              };
-            }
-            return t;
-          })
-        );
-      }
+      setPreparedTasks(generated);
     }
 
     setStep((prev) => (prev + 1) as any);
@@ -529,22 +683,26 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     setEditEndTime(task.endTime);
   };
 
-  // Save inline edit
+  // Save inline edit with conflict validation
   const handleSaveEdit = (taskId: string) => {
     if (!editTitle.trim()) return;
-    setPreparedTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId
-          ? {
-              ...t,
-              title: editTitle.trim(),
-              category: editCategory,
-              startTime: editStartTime,
-              endTime: editEndTime,
-            }
-          : t
-      )
+    const updated = preparedTasks.map((t) =>
+      t.id === taskId
+        ? {
+            ...t,
+            title: editTitle.trim(),
+            category: editCategory,
+            startTime: editStartTime,
+            endTime: editEndTime,
+          }
+        : t
     );
+    const resolved = validateAndResolveSchedule(
+      updated,
+      collegeStartTime || '10:00',
+      collegeEndTime || '17:00'
+    );
+    setPreparedTasks(resolved);
     setEditingTaskId(null);
   };
 
@@ -553,7 +711,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     setPreparedTasks((prev) => prev.filter((t) => t.id !== taskId));
   };
 
-  // Add custom task to prepared schedule
+  // Add custom task to prepared schedule with conflict resolution
   const handleAddNewTaskToSchedule = () => {
     if (!newTaskTitle.trim()) return;
     const newTask: TimetableItem = {
@@ -566,7 +724,13 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
       cognitiveWeight: newTaskCategory === 'study' || newTaskCategory === 'lecture' || newTaskCategory === 'lab' ? 3 : 1,
       notes: 'Custom task added by student.',
     };
-    setPreparedTasks((prev) => [...prev, newTask].sort((a, b) => a.startTime.localeCompare(b.startTime)));
+    const combined = [...preparedTasks, newTask];
+    const resolved = validateAndResolveSchedule(
+      combined,
+      collegeStartTime || '10:00',
+      collegeEndTime || '17:00'
+    );
+    setPreparedTasks(resolved);
     setNewTaskTitle('');
     setIsAddingNewTask(false);
   };
@@ -656,6 +820,8 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
       wakeTime: wakeTime,
       sleepTime: sleepTime,
       selectedHabits: selectedHabits,
+      mostImportantTask: mostImportantTask,
+      primaryGoal: primaryGoal,
       onboarded: true,
       accountCreatedAt: todayStr,
     });
@@ -697,7 +863,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                   {step === 3 && '03 College Routine & Focus'}
                   {step === 4 && '04 Daily Discipline Habits'}
                   {step === 5 && '05 Current Attendance'}
-                  {step === 6 && '06 Prepared Tasks & Schedule'}
+                  {step === 6 && '06 Review & Customize Your Plan'}
                 </span>
                 <span className="text-[11px] font-mono text-stone-400">
                   Step {step} of 6
@@ -1078,6 +1244,44 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                 {getCompiledSubjects().reduce((acc, curr) => acc + curr.credits, 0)} Total Credits
               </span>
             </div>
+
+            {/* Most Important Task / Subject Selection Widget */}
+            <div className="p-3.5 rounded-2xl border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  <span className="font-bold text-xs text-stone-900 dark:text-stone-100">
+                    ⭐ Most Important Task / Core Subject
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-200 font-bold border border-amber-500/30">
+                  Morning + Evening Priority
+                </span>
+              </div>
+              <p className="text-[11px] text-stone-600 dark:text-stone-400 leading-relaxed">
+                Select one primary task or subject to receive special priority in your daily plan: <strong>1 dedicated session in the morning (~1h)</strong> and <strong>1 dedicated session in the evening (~1h)</strong>.
+              </p>
+              
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {getCompiledSubjects().map((sub) => {
+                  const isSelected = mostImportantTask === sub.name;
+                  return (
+                    <button
+                      key={sub.id}
+                      type="button"
+                      onClick={() => setMostImportantTask(sub.name)}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
+                        isSelected
+                          ? 'bg-amber-500 text-white border-amber-600 shadow-xs font-bold'
+                          : 'bg-white dark:bg-stone-850 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:border-amber-400'
+                      }`}
+                    >
+                      <span>{isSelected ? '⭐ ' : ''}{sub.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1200,9 +1404,17 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
 
             {/* Primary Goal Selector */}
             <div className="space-y-2">
-              <label className="font-semibold text-stone-700 dark:text-stone-300">
-                What is your primary semester focus?
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="font-semibold text-stone-700 dark:text-stone-300">
+                  What is your primary semester focus?
+                </label>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-500/15 text-teal-800 dark:text-teal-200 font-bold border border-teal-500/30">
+                  1h 30m Dedicated Study Block
+                </span>
+              </div>
+              <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                Your selected academic focus receives a dedicated <strong>1 hour 30 minutes</strong> priority study session in your evening routine.
+              </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {[
                   {
@@ -1480,13 +1692,13 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-stone-100 dark:border-stone-800">
               <div>
                 <h3 className="font-bold text-sm sm:text-base text-stone-900 dark:text-stone-100 flex items-center gap-2">
-                  <span>Prepared Daily Tasks</span>
+                  <span>Review & Customize Your Plan</span>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300 font-bold border border-teal-500/30">
-                    {preparedTasks.length} Tasks Scheduled
+                    {preparedTasks.length} Conflict-Free Tasks
                   </span>
                 </h3>
                 <p className="text-stone-500 dark:text-stone-400 text-xs mt-0.5">
-                  Your customized daily routine. In this slide, your entire college is captured as <strong>one single task</strong> from {collegeStartTime} to {collegeEndTime}.
+                  Review your conflict-free daily routine. You can edit any task name or time, delete tasks, or add an extra task. Click 'Confirm Plan' when ready.
                 </p>
               </div>
 
@@ -1512,15 +1724,31 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
               </div>
             </div>
 
-            {/* Explanatory Banner */}
-            <div className="p-3 rounded-xl border border-teal-500/30 bg-teal-50/60 dark:bg-teal-950/30 text-teal-950 dark:text-teal-200 text-xs space-y-1">
-              <div className="font-bold flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
-                <span>One Unified College Task ({collegeStartTime} to {collegeEndTime})</span>
+            {/* Validation & Highlights Banner */}
+            <div className="p-3 rounded-2xl border border-teal-500/30 bg-teal-50/60 dark:bg-teal-950/30 text-teal-950 dark:text-teal-200 text-xs space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-1">
+                <div className="font-bold flex items-center gap-1.5 text-teal-900 dark:text-teal-100">
+                  <CheckCircle2 className="w-4 h-4 text-teal-700 dark:text-teal-400 shrink-0" />
+                  <span>Automated Schedule Validation Complete</span>
+                </div>
+                <span className="text-[10px] font-mono text-teal-800 dark:text-teal-300 bg-teal-200/50 dark:bg-teal-900/60 px-2 py-0.5 rounded-full font-semibold">
+                  Zero Time Overlaps · Sequential
+                </span>
               </div>
-              <p className="text-[11px] text-teal-800/90 dark:text-teal-300/80 leading-relaxed">
-                Rather than tracking separate fragmented lectures, college is represented as <strong>one task</strong> matching your entered hours ({collegeStartTime} – {collegeEndTime}). You can mark it once, modify any timings or titles, or add custom study sprints below.
-              </p>
+              <div className="flex flex-wrap gap-1.5 text-[10px]">
+                <span className="px-2 py-0.5 rounded-md bg-white dark:bg-stone-900 border border-teal-200 dark:border-teal-800/80 font-medium">
+                  ⭐ Most Important: <strong>{mostImportantTask}</strong> (Morning + Evening ~1h)
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-white dark:bg-stone-900 border border-teal-200 dark:border-teal-800/80 font-medium">
+                  🎯 Primary Focus: <strong>1h 30m Priority Study Block</strong>
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-white dark:bg-stone-900 border border-teal-200 dark:border-teal-800/80 font-medium">
+                  🏫 1 Single College Block: <strong>{collegeStartTime} – {collegeEndTime}</strong>
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-white dark:bg-stone-900 border border-teal-200 dark:border-teal-800/80 font-medium">
+                  📚 Study Duration: <strong>45–50+ mins each</strong>
+                </span>
+              </div>
             </div>
 
             {/* Add Custom Task Form (When toggled) */}
@@ -1878,7 +2106,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                 </>
               ) : (
                 <>
-                  <span>Confirm Schedule & Go to Home Dashboard</span>
+                  <span>Confirm Plan & Go to Home</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </>
               )}
