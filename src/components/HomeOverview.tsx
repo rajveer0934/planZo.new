@@ -24,6 +24,7 @@ import {
   TrendingUp,
   AlertCircle,
   Activity,
+  Sliders,
 } from 'lucide-react';
 import { ScheduleTaskModal } from './ScheduleTaskModal';
 import { StreakModal } from './StreakModal';
@@ -56,6 +57,7 @@ export const HomeOverview: React.FC = () => {
     userXp,
     awardXp,
     subjects,
+    setIsPersonalizationWizardOpen,
   } = useApp();
 
   // Modals state
@@ -141,6 +143,15 @@ export const HomeOverview: React.FC = () => {
 
         {/* Quick Utilities */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsPersonalizationWizardOpen(true)}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-teal-700 hover:bg-teal-800 text-white transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+            title="Setup your college timings, habits and tasks"
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Setup Routine & Tasks</span>
+          </button>
+
           <button
             onClick={() => injectBufferZone()}
             className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-stone-100 dark:bg-stone-800 hover:bg-stone-200/80 text-stone-700 dark:text-stone-300 transition-colors flex items-center gap-1.5 cursor-pointer"

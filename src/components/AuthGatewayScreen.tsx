@@ -278,7 +278,10 @@ export const AuthGatewayScreen: React.FC<AuthGatewayScreenProps> = ({
   // Quick Demo Guest Login
   const handleQuickDemoLogin = () => {
     signIn('student.demo@planzo.edu', 'demo1234');
-    setSuccessMsg('Signed in with Demo Student Account...');
+    setSuccessMsg('Signed in! Opening Routine & Task Setup Wizard...');
+    setTimeout(() => {
+      setIsPersonalizationWizardOpen(true);
+    }, 250);
   };
 
   return (

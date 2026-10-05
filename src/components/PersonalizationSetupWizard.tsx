@@ -485,10 +485,28 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     }
     setSubjectSelectionError(null);
 
-    // When advancing to Step 6 (Prepared Tasks slide), generate tasks if not customized
+    // When advancing to Step 6 (Prepared Tasks slide), always ensure tasks reflect user's latest inputs
     if (step === 5) {
+      const generated = generatePreparedTasks();
       if (preparedTasks.length === 0) {
-        setPreparedTasks(generatePreparedTasks());
+        setPreparedTasks(generated);
+      } else {
+        // Synchronize college task with updated collegeStartTime and collegeEndTime
+        setPreparedTasks((prev) =>
+          prev.map((t) => {
+            if (t.id.includes('college') || t.category === 'lecture') {
+              const matchingCollege = generated.find((g) => g.id.includes('college'));
+              return {
+                ...t,
+                startTime: collegeStartTime || '10:00',
+                endTime: collegeEndTime || '17:00',
+                title: matchingCollege?.title || t.title,
+                notes: `Unified college session covering all lectures, labs & practicals (${collegeStartTime} – ${collegeEndTime}). Mark once for the whole day.`,
+              };
+            }
+            return t;
+          })
+        );
       }
     }
 

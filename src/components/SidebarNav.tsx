@@ -15,6 +15,7 @@ import {
   Sun,
   X,
   Sparkles,
+  Sliders,
 } from 'lucide-react';
 
 interface SidebarNavProps {
@@ -37,7 +38,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   isDarkMode,
   setIsDarkMode,
 }) => {
-  const { activeView, setActiveView, profile, currentUser, signOut } = useApp();
+  const { activeView, setActiveView, profile, currentUser, signOut, setIsPersonalizationWizardOpen } = useApp();
 
   const primaryNav: NavItem[] = [
     { id: 'home', label: 'Overview', icon: LayoutDashboard },
@@ -141,6 +142,22 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
             <div className="pt-3 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-400">
               System
             </div>
+
+            <button
+              onClick={() => {
+                setIsPersonalizationWizardOpen(true);
+                if (isMobileOpen) setIsMobileOpen(false);
+              }}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-teal-800 dark:text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 transition-colors cursor-pointer mb-1"
+            >
+              <div className="flex items-center gap-2.5">
+                <Sliders className="w-4 h-4 text-teal-700 dark:text-teal-400" />
+                <span>Routine & Tasks</span>
+              </div>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded font-bold bg-teal-600 text-white">
+                Setup
+              </span>
+            </button>
 
             <button
               onClick={() => handleNavClick('settings')}

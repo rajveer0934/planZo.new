@@ -101,10 +101,11 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         {/* Setup Wizard */}
         <button
           onClick={() => setIsPersonalizationWizardOpen(true)}
-          className="hidden md:flex p-2 rounded-lg border border-stone-200/70 dark:border-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
-          title="Configure Routine & Curriculum"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-teal-500/40 bg-teal-50 dark:bg-teal-950/40 text-teal-800 dark:text-teal-200 hover:bg-teal-100 dark:hover:bg-teal-900 transition-colors text-xs font-semibold cursor-pointer shadow-2xs"
+          title="Configure Routine, College Hours & Tasks"
         >
-          <Sliders className="w-4 h-4" />
+          <Sliders className="w-3.5 h-3.5 text-teal-700 dark:text-teal-400" />
+          <span className="hidden sm:inline">Setup Routine</span>
         </button>
 
         {/* Primary Action: + Add Task */}
