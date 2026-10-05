@@ -25,6 +25,7 @@ import {
   AlertCircle,
   Activity,
   Sliders,
+  Edit3,
 } from 'lucide-react';
 import { ScheduleTaskModal } from './ScheduleTaskModal';
 import { StreakModal } from './StreakModal';
@@ -468,6 +469,13 @@ export const HomeOverview: React.FC = () => {
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className="text-[10px] font-mono text-stone-400">{task.startTime}</span>
+                    <button
+                      onClick={() => setActiveView('tasks')}
+                      className="p-1 rounded-md text-stone-400 hover:text-teal-600 transition-colors"
+                      title="Edit task in Schedule & Tasks"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                    </button>
                     {!isCompleted && (
                       <button
                         onClick={() => startZenMode(task)}

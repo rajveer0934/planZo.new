@@ -61,6 +61,16 @@ const PlanZoMain: React.FC = () => {
     }
   }, [isDarkMode]);
 
+  // Automatically open the Personalization Setup Wizard on first login/app use if schedule is not yet personalized
+  useEffect(() => {
+    if (currentUser?.isAuthenticated) {
+      const hasGeneratedSchedule = localStorage.getItem('planzo_timetable_v1');
+      if (!hasGeneratedSchedule) {
+        setIsPersonalizationWizardOpen(true);
+      }
+    }
+  }, [currentUser?.isAuthenticated, setIsPersonalizationWizardOpen]);
+
   // GATEWAY AUTHENTICATION CHECK:
   if (!currentUser || !currentUser.isAuthenticated) {
     return (

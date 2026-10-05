@@ -17,6 +17,9 @@ import {
   Play,
   RotateCcw,
   CalendarPlus,
+  Edit3,
+  Check,
+  Trash2,
 } from 'lucide-react';
 import { playTaskCompleteSound } from '../utils/audioSynth';
 import { fireConfetti } from '../utils/audioVibes';
@@ -25,6 +28,7 @@ import { ScheduleTaskModal } from './ScheduleTaskModal';
 export const DailyTimeline: React.FC = () => {
   const {
     timetable,
+    setTimetable,
     toggleItemComplete,
     snoozeItem,
     shiftItemToEvening,
@@ -39,6 +43,52 @@ export const DailyTimeline: React.FC = () => {
   const [filter, setFilter] = useState<'all' | 'study' | 'habit' | 'chill'>('all');
   const [activeShiftMenuId, setActiveShiftMenuId] = useState<string | null>(null);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+
+  // Inline editing state for tasks in DailyTimeline
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editCategory, setEditCategory] = useState<TimetableItem['category']>('study');
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+
+  const handleStartEdit = (item: TimetableItem) => {
+    setEditingItemId(item.id);
+    setEditTitle(item.title);
+    setEditCategory(item.category);
+    setEditStartTime(item.startTime);
+    setEditEndTime(item.endTime);
+    setEditNotes(item.notes || '');
+  };
+
+  const handleSaveEdit = (itemId: string) => {
+    if (!editTitle.trim()) return;
+    setTimetable((prev) =>
+      prev
+        .map((t) =>
+          t.id === itemId
+            ? {
+                ...t,
+                title: editTitle.trim(),
+                category: editCategory,
+                startTime: editStartTime || t.startTime,
+                endTime: editEndTime || t.endTime,
+                notes: editNotes.trim() || undefined,
+              }
+            : t
+        )
+        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+    );
+    setEditingItemId(null);
+    playTaskCompleteSound();
+  };
+
+  const handleDeleteItem = (itemId: string) => {
+    setTimetable((prev) => prev.filter((t) => t.id !== itemId));
+    if (editingItemId === itemId) {
+      setEditingItemId(null);
+    }
+  };
 
   const handleToggle = (item: TimetableItem) => {
     toggleItemComplete(item.id);
@@ -173,6 +223,102 @@ export const DailyTimeline: React.FC = () => {
           const meta = getCategoryMeta(item.category);
           const Icon = meta.icon;
 
+          if (editingItemId === item.id) {
+            return (
+              <div
+                key={item.id}
+                className="p-4 rounded-2xl border-2 border-teal-500 bg-teal-50/50 dark:bg-teal-950/40 space-y-3 shadow-md"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-teal-800 dark:text-teal-200">
+                    Edit Schedule Task
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEdit(item.id)}
+                      className="px-2.5 py-1 rounded-lg bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs flex items-center gap-1 cursor-pointer shadow-xs transition-colors"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Save</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingItemId(null)}
+                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 text-xs font-semibold cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteItem(item.id)}
+                      className="p-1 rounded-lg text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-950/60 transition-colors cursor-pointer"
+                      title="Delete task from schedule"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-stone-700 dark:text-stone-300">
+                    Task / Activity Name
+                  </label>
+                  <input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-semibold text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-[10px] font-semibold text-stone-500 dark:text-stone-400 block mb-1">
+                      Start Time
+                    </label>
+                    <input
+                      type="time"
+                      value={editStartTime}
+                      onChange={(e) => setEditStartTime(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-mono font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-stone-500 dark:text-stone-400 block mb-1">
+                      End Time
+                    </label>
+                    <input
+                      type="time"
+                      value={editEndTime}
+                      onChange={(e) => setEditEndTime(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-mono font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-semibold text-stone-500 dark:text-stone-400 block mb-1">
+                      Category
+                    </label>
+                    <select
+                      value={editCategory}
+                      onChange={(e) => setEditCategory(e.target.value as any)}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-medium cursor-pointer"
+                    >
+                      <option value="study">Deep Study</option>
+                      <option value="habit">Daily Habit</option>
+                      <option value="lecture">Theory Lecture</option>
+                      <option value="lab">College Lab</option>
+                      <option value="chill">Buffer Zone</option>
+                      <option value="assignment">Assignment</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
           return (
             <div
               key={item.id}
@@ -244,7 +390,7 @@ export const DailyTimeline: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Right Side: Quick Action Pills (Shift, Zen Mode, Checkbox) */}
+                {/* Right Side: Quick Action Pills (Shift, Zen Mode, Edit, Checkbox) */}
                 <div className="flex items-center gap-2 shrink-0">
                   
                   {!item.completed && (
@@ -279,6 +425,15 @@ export const DailyTimeline: React.FC = () => {
 
                     </div>
                   )}
+
+                  {/* Edit Button */}
+                  <button
+                    onClick={() => handleStartEdit(item)}
+                    className="p-1.5 rounded-lg text-stone-400 hover:text-teal-600 dark:hover:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/40 transition-colors cursor-pointer"
+                    title="Edit task name and timings"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
 
                   {/* Primary Complete Button */}
                   <button
