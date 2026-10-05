@@ -74,7 +74,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenAddTaskModal }) => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200/80 dark:border-stone-800">
         <div>
           <h2 className="text-xl font-bold text-stone-900 dark:text-stone-100 tracking-tight">
-            Task Management
+            Schedule & Tasks
           </h2>
           <p className="text-xs text-stone-500">
             {todayTasks.length} pending · {completedTasks.length} completed today

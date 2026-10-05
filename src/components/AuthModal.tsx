@@ -37,15 +37,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultMo
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  if (!isOpen) return null;
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
-    if (!email || !email.includes('@')) {
-      setErrorMsg('Please enter a valid student email address.');
-      return;
+    if (mode === 'signup') {
+      if (!name.trim()) {
+        setErrorMsg('Please enter your full name.');
+        return;
+      }
+    } else {
+      if (!name.trim()) {
+        setErrorMsg('Please enter your Student Name or Username.');
+        return;
+      }
     }
 
     if (!password || password.length < 4) {
@@ -54,14 +59,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultMo
     }
 
     if (mode === 'signup') {
-      if (!name.trim()) {
-        setErrorMsg('Please enter your full name.');
-        return;
-      }
-
       signUp({
         name,
-        email,
         password,
         college,
         branch,
@@ -74,7 +73,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultMo
         onClose();
       }, 700);
     } else {
-      signIn(email, password);
+      signIn(name, password);
       setSuccessMsg('Welcome back! Logging into your workspace...');
       setTimeout(() => {
         setSuccessMsg('');
@@ -91,6 +90,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultMo
       onClose();
     }, 600);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/70 backdrop-blur-md animate-fadeIn">
@@ -217,38 +218,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultMo
         {/* Form Inputs */}
         <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
           
-          {mode === 'signup' && (
-            <div className="space-y-1.5">
-              <label className="font-semibold text-stone-700 dark:text-stone-300">
-                Full Name
-              </label>
-              <div className="relative">
-                <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Rahul Sharma"
-                  required
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/70 dark:bg-stone-900/60 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 font-medium transition-all"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Email Address */}
+          {/* Student Name / Username */}
           <div className="space-y-1.5">
-            <label className="font-semibold text-stone-700 dark:text-stone-300 flex items-center justify-between">
-              <span>College or Personal Email</span>
-              <span className="text-[10px] font-mono text-stone-400">Syncs records</span>
+            <label className="font-semibold text-stone-700 dark:text-stone-300">
+              {mode === 'signup' ? 'Full Name' : 'Student Name / Username'}
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@college.edu or gmail.com"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={mode === 'signup' ? 'e.g. Rahul Sharma' : 'e.g. Rahul Sharma or Demo Student'}
                 required
                 className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/70 dark:bg-stone-900/60 text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 font-medium transition-all"
               />

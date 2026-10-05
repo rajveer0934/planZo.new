@@ -31,7 +31,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const viewTitles: Record<string, { title: string; subtitle: string }> = {
     home: { title: 'Overview', subtitle: 'Academic Command Center' },
     timeline: { title: 'My Day', subtitle: 'Time-Blocked Daily Routine' },
-    tasks: { title: 'Tasks', subtitle: 'Priority Action Queue' },
+    tasks: { title: 'Schedule and Tasks', subtitle: 'Priority Action Queue & Daily Schedule' },
     schedule: { title: 'Schedule', subtitle: 'Timetable & Academic Calendar' },
     attendance: { title: 'Attendance Guard', subtitle: '75% AICTE Monitoring' },
     academic: { title: 'Academic Vault', subtitle: 'Syllabus, PYQs & Notes' },

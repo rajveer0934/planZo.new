@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Clock,
   CheckSquare,
-  Calendar,
   ShieldCheck,
   BookOpen,
   BarChart2,
@@ -26,7 +25,7 @@ interface SidebarNavProps {
 }
 
 interface NavItem {
-  id: 'home' | 'timeline' | 'tasks' | 'schedule' | 'attendance' | 'academic' | 'analytics' | 'ai';
+  id: 'home' | 'timeline' | 'tasks' | 'attendance' | 'academic' | 'analytics' | 'ai';
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   badge?: string;
@@ -43,8 +42,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   const primaryNav: NavItem[] = [
     { id: 'home', label: 'Overview', icon: LayoutDashboard },
     { id: 'timeline', label: 'My Day', icon: Clock },
-    { id: 'tasks', label: 'Tasks', icon: CheckSquare },
-    { id: 'schedule', label: 'Schedule', icon: Calendar },
+    { id: 'tasks', label: 'Schedule and Tasks', icon: CheckSquare },
     { id: 'attendance', label: 'Attendance', icon: ShieldCheck },
     { id: 'academic', label: 'Academics', icon: BookOpen },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },

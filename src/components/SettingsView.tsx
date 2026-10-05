@@ -256,8 +256,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div className="space-y-3 pt-2 text-xs">
                 <div className="flex items-center justify-between p-3 rounded-xl bg-stone-50 dark:bg-stone-850 border border-stone-200/60 dark:border-stone-800">
                   <div>
-                    <div className="font-semibold text-stone-700 dark:text-stone-300">Email Address</div>
-                    <div className="text-stone-500 font-mono mt-0.5">{currentUser?.email || 'student@btech.ac.in'}</div>
+                    <div className="font-semibold text-stone-700 dark:text-stone-300">Student Identity</div>
+                    <div className="text-stone-500 font-mono mt-0.5">{currentUser?.name || 'Enrolled Student'}</div>
                   </div>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 font-bold">
                     Active Session

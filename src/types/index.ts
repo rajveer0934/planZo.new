@@ -82,7 +82,7 @@ export interface AuthUser {
   name: string;
   firstName?: string;
   lastName?: string;
-  email: string;
+  email?: string;
   phone?: string;
   isVerified?: boolean;
   password?: string;

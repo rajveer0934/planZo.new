@@ -95,7 +95,7 @@ interface AppContextType {
     name: string;
     firstName?: string;
     lastName?: string;
-    email: string;
+    email?: string;
     phone?: string;
     password?: string;
     isVerified?: boolean;
@@ -105,7 +105,7 @@ interface AppContextType {
     rollNo?: string;
     avatarUrl?: string;
   }) => void;
-  signIn: (email: string, password?: string) => boolean;
+  signIn: (identifier: string, password?: string) => boolean;
   signOut: () => void;
   // Study Block Scheduling
   scheduleStudyBlock: (block: {
@@ -860,7 +860,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     name: string;
     firstName?: string;
     lastName?: string;
-    email: string;
+    email?: string;
     phone?: string;
     password?: string;
     isVerified?: boolean;
@@ -874,13 +874,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const derivedFirstName = userData.firstName || (userData.name ? userData.name.trim().split(' ')[0] : 'Student');
     const derivedLastName = userData.lastName || (userData.name && userData.name.trim().split(' ').length > 1 ? userData.name.trim().split(' ').slice(1).join(' ') : '');
     const fullName = `${derivedFirstName} ${derivedLastName}`.trim();
+    const cleanEmail = userData.email?.toLowerCase().trim() || `${derivedFirstName.toLowerCase().replace(/[^a-z0-9]/g, '')}@student.planzo`;
 
     const newUser: AuthUser = {
       id: `usr-${Date.now()}`,
       name: fullName,
       firstName: derivedFirstName,
       lastName: derivedLastName,
-      email: userData.email.toLowerCase().trim(),
+      email: cleanEmail,
       phone: userData.phone || '',
       password: userData.password || '',
       isVerified: userData.isVerified !== undefined ? userData.isVerified : true,
@@ -898,7 +899,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const savedUsersRaw = localStorage.getItem('planzo_registered_users_v1');
       const registeredUsers: AuthUser[] = savedUsersRaw ? JSON.parse(savedUsersRaw) : [];
-      const filtered = registeredUsers.filter((u) => u.email.toLowerCase() !== newUser.email);
+      const filtered = registeredUsers.filter((u) => u.name.toLowerCase() !== newUser.name.toLowerCase() && (!newUser.email || u.email?.toLowerCase() !== newUser.email));
       filtered.push(newUser);
       localStorage.setItem('planzo_registered_users_v1', JSON.stringify(filtered));
     } catch (e) {
@@ -968,17 +969,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setRecalibrateNotice(`Welcome to PlanZo, ${derivedFirstName}! Student workspace unlocked.`);
   };
 
-  const signIn = (email: string, password?: string): boolean => {
-    const cleanEmail = email.toLowerCase().trim();
+  const signIn = (identifier: string, password?: string): boolean => {
+    const cleanId = identifier.trim();
+    const cleanLower = cleanId.toLowerCase();
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // Check if user is in planzo_registered_users_v1
+    // Check if user is in planzo_registered_users_v1 by name, firstName, email, or rollNo
     let matchedUser: AuthUser | null = null;
     try {
       const savedUsersRaw = localStorage.getItem('planzo_registered_users_v1');
       if (savedUsersRaw) {
         const users: AuthUser[] = JSON.parse(savedUsersRaw);
-        matchedUser = users.find((u) => u.email.toLowerCase() === cleanEmail) || null;
+        matchedUser = users.find(
+          (u) =>
+            u.name.toLowerCase() === cleanLower ||
+            (u.email && u.email.toLowerCase() === cleanLower) ||
+            (u.firstName && u.firstName.toLowerCase() === cleanLower) ||
+            (u.rollNo && u.rollNo.toLowerCase() === cleanLower)
+        ) || null;
       }
     } catch (e) {}
 
@@ -990,22 +998,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAuthenticated: true,
       };
     } else {
-      // If user logs in with email that was not previously registered, derive proper first & last name
-      const prefix = cleanEmail.split('@')[0] || 'student';
-      const formatted = prefix
-        .split(/[._-]/)
-        .filter(Boolean)
-        .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
-        .join(' ') || 'Student';
-      const fName = formatted.split(' ')[0];
+      // If user logs in with a name that was not previously registered, use clean name
+      const formatted = cleanId.includes('@')
+        ? cleanId.split('@')[0]
+        : cleanId;
+      const fName = formatted.split(' ')[0] || 'Student';
       const lName = formatted.split(' ').slice(1).join(' ');
 
       userToLogin = {
         id: `usr-${Date.now()}`,
-        name: formatted,
+        name: cleanId || 'Student',
         firstName: fName,
         lastName: lName,
-        email: cleanEmail,
+        email: cleanId.includes('@') ? cleanLower : `${fName.toLowerCase()}@student.planzo`,
         phone: '',
         isVerified: true,
         rollNo: '',
