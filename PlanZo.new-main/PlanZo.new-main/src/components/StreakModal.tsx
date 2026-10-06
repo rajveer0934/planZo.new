@@ -20,11 +20,12 @@ interface StreakModalProps {
 }
 
 export const StreakModal: React.FC<StreakModalProps> = ({ isOpen, onClose }) => {
-  const { userStreak, scheduledTasks, getDateTaskStats, profile } = useApp();
+  const { userStreak, timetable, profile } = useApp();
 
   if (!isOpen) return null;
 
   const todayStr = new Date().toISOString().split('T')[0];
+  const todayCompleted = timetable.filter((t) => t.completed).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-stone-950/70 backdrop-blur-md animate-fadeIn">
@@ -70,8 +71,8 @@ export const StreakModal: React.FC<StreakModalProps> = ({ isOpen, onClose }) => 
               </div>
               <p className="text-xs text-stone-600 dark:text-stone-300">
                 {userStreak > 0
-                  ? `You've maintained an unbroken academic rhythm for ${userStreak} consecutive days!`
-                  : `Your streak tracker starts from today (${todayStr})! Complete today's planned tasks to ignite your Day 1 streak.`}
+                  ? `You've maintained an unbroken academic rhythm (7+ tasks/day) for ${userStreak} consecutive days!`
+                  : `Complete at least 7 tasks today (${Math.min(7, todayCompleted)}/7 completed so far) to count your Day 1 streak.`}
               </p>
             </div>
 

@@ -120,7 +120,7 @@ Core Principles:
       });
     }
 
-    const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
     let generatedText = '';
 
     for (const model of candidateModels) {

@@ -3,6 +3,7 @@ import { SubjectCourse, TimetableItem } from '../types';
 
 export const COLLEGES_LIST = [
   'Samrat Ashok Technological Institute (SATI), Vidisha M.P.',
+  'Sagar Institute of Research and Technology (SIRT), Bhopal',
   'University Institute of Technology, RGPV Bhopal',
   'Shri Govindram Seksaria Institute of Technology and Science (SGSITS), Indore',
   'Institute of Engineering & Technology (IET DAVV), Indore',
@@ -29,7 +30,7 @@ export const BRANCHES_LIST = [
 
 export const DEFAULT_HABITS = [
   'Daily LeetCode / DSA Problem',
-  'Gym / Cardio Workout (45m)',
+  'Gym / Cardio Workout',
   'Hydration Goal (3 Litres)',
   'Technical Reading / Documentation (20m)',
   'Mindful Breathing / Meditation (10m)',

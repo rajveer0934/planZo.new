@@ -282,7 +282,7 @@ export const DailyTimeline: React.FC = () => {
                       type="time"
                       value={editStartTime}
                       onChange={(e) => setEditStartTime(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-mono font-semibold"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs font-mono font-bold text-stone-900 dark:text-emerald-400"
                     />
                   </div>
 
@@ -294,7 +294,7 @@ export const DailyTimeline: React.FC = () => {
                       type="time"
                       value={editEndTime}
                       onChange={(e) => setEditEndTime(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-mono font-semibold"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs font-mono font-bold text-stone-900 dark:text-emerald-400"
                     />
                   </div>
 
@@ -305,7 +305,7 @@ export const DailyTimeline: React.FC = () => {
                     <select
                       value={editCategory}
                       onChange={(e) => setEditCategory(e.target.value as any)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-medium cursor-pointer"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs font-medium text-stone-900 dark:text-stone-100 cursor-pointer"
                     >
                       <option value="study">Deep Study</option>
                       <option value="habit">Daily Habit</option>
@@ -391,42 +391,8 @@ export const DailyTimeline: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Right Side: Quick Action Pills (Shift, Zen Mode, Edit, Checkbox) */}
-                <div className="flex items-center gap-2 shrink-0">
-                  
-                  {!item.completed && (
-                    <div className="flex items-center gap-1">
-                      
-                      {/* Launch Zen Mode Button */}
-                      <button
-                        onClick={() => startZenMode(item)}
-                        className="p-1.5 rounded-lg text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
-                        title="Focus Mode (Full Screen Ambient)"
-                      >
-                        <Play className="w-4 h-4" />
-                      </button>
-
-                      {/* Quick Snooze +30m Button */}
-                      <button
-                        onClick={() => snoozeItem(item.id, 30)}
-                        className="px-2 py-1 rounded-lg text-xs font-mono font-medium text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
-                        title="Running late? Snooze slot by 30 mins"
-                      >
-                        +30m
-                      </button>
-
-                      {/* Shift to Night Slot Button */}
-                      <button
-                        onClick={() => shiftItemToEvening(item.id)}
-                        className="px-2 py-1 rounded-lg text-xs font-medium text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
-                        title="Shift to Evening Study Session"
-                      >
-                        Shift to Night
-                      </button>
-
-                    </div>
-                  )}
-
+                {/* Right Side: Edit & Remove Actions Only (No Complete Option in My Day) */}
+                <div className="flex items-center gap-1.5 shrink-0">
                   {/* Edit Button */}
                   <button
                     onClick={() => handleStartEdit(item)}
@@ -436,23 +402,14 @@ export const DailyTimeline: React.FC = () => {
                     <Edit3 className="w-4 h-4" />
                   </button>
 
-                  {/* Primary Complete Button */}
+                  {/* Remove / Delete Button */}
                   <button
-                    onClick={() => handleToggle(item)}
-                    className={`p-1.5 rounded-lg transition-colors cursor-pointer active:scale-90 ${
-                      item.completed
-                        ? 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-                        : 'text-stone-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-stone-100 dark:hover:bg-stone-800'
-                    }`}
-                    title={item.completed ? 'Mark incomplete' : 'Complete task'}
+                    onClick={() => handleDeleteItem(item.id)}
+                    className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                    title="Remove task from schedule"
                   >
-                    {item.completed ? (
-                      <CheckCircle2 className="w-5 h-5" />
-                    ) : (
-                      <Circle className="w-5 h-5" />
-                    )}
+                    <Trash2 className="w-4 h-4" />
                   </button>
-
                 </div>
 
               </div>

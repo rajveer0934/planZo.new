@@ -251,92 +251,51 @@ export const HomeOverview: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* 3. ATTENDANCE STATUS & ACADEMIC MILESTONE (Prioritized at Top)             */}
+      {/* 3. ATTENDANCE STATUS (Prioritized at Top)                                 */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        
-        {/* Attendance Overview Card */}
-        <div
-          onClick={() => setActiveView('attendance')}
-          className="rounded-2xl border border-stone-200/80 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xs flex flex-col justify-between hover:border-teal-500/60 transition-all cursor-pointer group"
-        >
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-stone-400 flex items-center gap-1.5">
-                {isAttendanceSafe ? (
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                ) : (
-                  <ShieldAlert className="w-4 h-4 text-amber-600" />
-                )}
-                <span>Attendance Status</span>
-              </span>
-              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                isAttendanceSafe
-                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                  : 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
-              }`}>
-                {isAttendanceSafe ? 'Safe (≥75%)' : 'Warning'}
-              </span>
-            </div>
-
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold font-mono text-stone-900 dark:text-stone-100 tabular-nums">
-                {overallAttendancePercentage}%
-              </span>
-              <span className="text-xs text-stone-500">
-                ({totalAttended}/{totalConducted} classes attended)
-              </span>
-            </div>
-
-            <p className="text-xs text-stone-500 leading-relaxed">
-              {isAttendanceSafe
-                ? `You have a buffer of ${safeBunks} safe classes you can miss while keeping 75%.`
-                : `Attend next ${classesNeededFor75} consecutive lectures to recover safe margin.`}
-            </p>
+      <div
+        onClick={() => setActiveView('attendance')}
+        className="rounded-2xl border border-stone-200/80 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xs flex flex-col justify-between hover:border-teal-500/60 transition-all cursor-pointer group"
+      >
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-stone-400 flex items-center gap-1.5">
+              {isAttendanceSafe ? (
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <ShieldAlert className="w-4 h-4 text-amber-600" />
+              )}
+              <span>Attendance Status</span>
+            </span>
+            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+              isAttendanceSafe
+                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                : 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+            }`}>
+              {isAttendanceSafe ? 'Safe (≥75%)' : 'Warning'}
+            </span>
           </div>
 
-          <div className="pt-3 mt-3 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between text-xs text-teal-700 dark:text-teal-400 font-semibold group-hover:underline">
-            <span>Open Attendance Simulator & Subject Drill-down</span>
-            <ChevronRight className="w-4 h-4" />
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-extrabold font-mono text-stone-900 dark:text-stone-100 tabular-nums">
+              {overallAttendancePercentage}%
+            </span>
+            <span className="text-xs text-stone-500">
+              ({totalAttended}/{totalConducted} classes attended)
+            </span>
           </div>
+
+          <p className="text-xs text-stone-500 leading-relaxed">
+            {isAttendanceSafe
+              ? `You have a buffer of ${safeBunks} safe classes you can miss while keeping 75%.`
+              : `Attend next ${classesNeededFor75} consecutive lectures to recover safe margin.`}
+          </p>
         </div>
 
-        {/* Upcoming Exam & Study Recommendation */}
-        <div
-          onClick={() => setActiveView('academic')}
-          className="rounded-2xl border border-stone-200/80 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 shadow-xs flex flex-col justify-between hover:border-teal-500/60 transition-all cursor-pointer group"
-        >
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-stone-400 flex items-center gap-1.5">
-                <BookOpen className="w-4 h-4 text-teal-600" />
-                <span>Academic Milestone</span>
-              </span>
-              <span className="text-[11px] font-mono text-teal-700 dark:text-teal-400 font-bold">
-                18 Days Left
-              </span>
-            </div>
-
-            <div className="space-y-0.5">
-              <div className="text-base font-bold text-stone-900 dark:text-stone-100">
-                Mid-Semester Examination 1
-              </div>
-              <p className="text-xs text-stone-500">
-                Units 1 & 2 high-yield theorems & solved PYQs
-              </p>
-            </div>
-
-            <div className="p-2.5 rounded-xl bg-stone-50 dark:bg-stone-850 text-xs text-stone-600 dark:text-stone-300">
-              💡 <strong>Pareto Recommendation:</strong> 45-min review on {subjects[0]?.code || 'CS-701'} will secure ~14 exam marks.
-            </div>
-          </div>
-
-          <div className="pt-3 mt-3 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between text-xs text-teal-700 dark:text-teal-400 font-semibold group-hover:underline">
-            <span>Explore Academic Vault & PYQs</span>
-            <ChevronRight className="w-4 h-4" />
-          </div>
+        <div className="pt-3 mt-3 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between text-xs text-teal-700 dark:text-teal-400 font-semibold group-hover:underline">
+          <span>Open Attendance Simulator & Subject Drill-down</span>
+          <ChevronRight className="w-4 h-4" />
         </div>
-
       </div>
 
       {/* ========================================================================= */}
@@ -391,7 +350,9 @@ export const HomeOverview: React.FC = () => {
               {userStreak} Days
             </div>
             <div className="text-[11px] text-amber-600 dark:text-amber-400 group-hover:underline">
-              Consistent focus
+              {completedCount >= 7
+                ? '7+ tasks completed · Streak active'
+                : `${Math.min(7, completedCount)}/7 tasks to count streak`}
             </div>
           </div>
 

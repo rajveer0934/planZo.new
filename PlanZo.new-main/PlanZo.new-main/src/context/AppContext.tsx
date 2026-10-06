@@ -210,7 +210,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [
       {
         id: 'routine-1',
-        title: '🏃‍♂️ Subah Fitness: Gym / Workout / Physical Fitness',
+        title: '🏃‍♂️ Morning Fitness: Gym / Workout / Physical Fitness',
         category: 'habit',
         startTime: '07:00',
         endTime: '07:40',
@@ -220,7 +220,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       {
         id: 'routine-mit-morning',
-        title: '⭐ Subah Deep Study: C Programming & DSA (Morning Priority Session 1)',
+        title: '⭐ Morning Deep Study: C Programming & DSA (Morning Priority Session 1)',
         category: 'study',
         startTime: '07:40',
         endTime: '08:40',
@@ -500,6 +500,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Helper: Compute current consecutive streak of days with >= 7 completed tasks
+  const computeSevenTaskStreak = (
+    tasksByDate: Record<string, DailyScheduledTask[]>,
+    todayTimetable: TimetableItem[]
+  ): number => {
+    const today = new Date();
+    const todayKey = today.toISOString().split('T')[0];
+
+    const getCountForDate = (dateKey: string): number => {
+      if (dateKey === todayKey) {
+        const fromTimetable = todayTimetable.filter((t) => t.completed).length;
+        const fromScheduled = (tasksByDate[dateKey] || []).filter((t) => t.completed).length;
+        return Math.max(fromTimetable, fromScheduled);
+      }
+      return (tasksByDate[dateKey] || []).filter((t) => t.completed).length;
+    };
+
+    // Check past consecutive days ending yesterday
+    let pastStreak = 0;
+    for (let offset = 1; offset <= 365; offset++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - offset);
+      const key = d.toISOString().split('T')[0];
+      if (getCountForDate(key) >= 7) {
+        pastStreak += 1;
+      } else {
+        break;
+      }
+    }
+
+    const todayCompleted = getCountForDate(todayKey);
+    if (todayCompleted >= 7) {
+      return pastStreak + 1;
+    }
+    return pastStreak;
+  };
+
+  // Keep userStreak synced with the 7-task completion rule
+  useEffect(() => {
+    const calculatedStreak = computeSevenTaskStreak(scheduledTasks, timetable);
+    setUserStreak(calculatedStreak);
+  }, [timetable, scheduledTasks]);
+
   const toggleItemComplete = (id: string) => {
     const todayStr = new Date().toISOString().split('T')[0];
     setTimetable((prev) => {
@@ -508,28 +551,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const next = !item.completed;
           if (next) {
             awardXp(25, `Completed: ${item.title}`);
-            setUserStreak((s) => (s === 0 ? 1 : s));
           }
           return { ...item, completed: next };
         }
         return item;
       });
-      setScheduledTasks((prevScheduled) => ({
-        ...prevScheduled,
-        [todayStr]: updated.map((item) => ({
-          id: item.id,
-          title: item.title,
-          category: item.category,
-          startTime: item.startTime,
-          endTime: item.endTime,
-          date: todayStr,
-          completed: item.completed,
-          cognitiveWeight: item.cognitiveWeight || 3,
-          subjectId: item.subjectId,
-        })),
+      const nextScheduledForToday = updated.map((item) => ({
+        id: item.id,
+        title: item.title,
+        category: item.category,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        date: todayStr,
+        completed: item.completed,
+        cognitiveWeight: item.cognitiveWeight || 3,
+        subjectId: item.subjectId,
       }));
+      setScheduledTasks((prevScheduled) => {
+        const nextScheduled = {
+          ...prevScheduled,
+          [todayStr]: nextScheduledForToday,
+        };
+        setUserStreak(computeSevenTaskStreak(nextScheduled, updated));
+        return nextScheduled;
+      });
       return updated;
     });
+  };
+
+  const parseTimeMins = (t: string): number => {
+    if (!t) return 0;
+    const parts = t.split(':').map(Number);
+    return (parts[0] || 0) * 60 + (parts[1] || 0);
+  };
+
+  const formatMinsToTime = (mins: number): string => {
+    const bounded = Math.max(0, Math.min(1439, Math.round(mins)));
+    const h = Math.floor(bounded / 60);
+    const m = bounded % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  };
+
+  // Enforces strict wakeTime -> sleepTime boundaries and zero overlaps across any timetable list
+  const enforceStrictNonOverlappingTimetable = (
+    items: TimetableItem[],
+    wTime: string = profile.wakeTime || '07:00',
+    sTime: string = profile.sleepTime || '23:30'
+  ): TimetableItem[] => {
+    if (!items || items.length === 0) return [];
+    const wakeM = parseTimeMins(wTime);
+    let sleepM = parseTimeMins(sTime);
+    if (sleepM <= wakeM) sleepM = 1439;
+
+    const sorted = [...items].sort(
+      (a, b) => parseTimeMins(a.startTime) - parseTimeMins(b.startTime)
+    );
+
+    const resolved: TimetableItem[] = [];
+    let cursor = wakeM;
+
+    for (let i = 0; i < sorted.length; i++) {
+      const cur = { ...sorted[i] };
+      const rawS = parseTimeMins(cur.startTime);
+      const rawE = parseTimeMins(cur.endTime);
+      const desiredDur = Math.max(15, rawE > rawS ? rawE - rawS : 30);
+
+      const startM = Math.max(cursor, Math.min(sleepM - 10, rawS));
+      if (startM >= sleepM) break;
+
+      const endM = Math.min(sleepM, startM + desiredDur);
+      cur.startTime = formatMinsToTime(startM);
+      cur.endTime = formatMinsToTime(Math.max(startM + 10, endM));
+      resolved.push(cur);
+      cursor = parseTimeMins(cur.endTime);
+    }
+
+    return resolved;
   };
 
   const snoozeItem = (id: string, minutes: number = 30) => {
@@ -537,52 +634,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const target = prev.find((t) => t.id === id);
       if (!target) return prev;
 
-      const [h, m] = target.startTime.split(':').map(Number);
-      const newMinutes = (h * 60 + m + minutes) % 1440;
-      const newH = Math.floor(newMinutes / 60).toString().padStart(2, '0');
-      const newM = (newMinutes % 60).toString().padStart(2, '0');
+      const startM = parseTimeMins(target.startTime);
+      const endM = parseTimeMins(target.endTime);
+      const dur = Math.max(20, endM - startM);
+      const newStartM = Math.min(1420, startM + minutes);
+      const newEndM = Math.min(1439, newStartM + dur);
 
-      return prev.map((item) =>
-        item.id === id ? { ...item, startTime: `${newH}:${newM}`, snoozed: true } : item
+      const updated = prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              startTime: formatMinsToTime(newStartM),
+              endTime: formatMinsToTime(newEndM),
+              snoozed: true,
+            }
+          : item
       );
+      return enforceStrictNonOverlappingTimetable(updated);
     });
   };
 
   const shiftItemToEvening = (id: string) => {
-    setTimetable((prev) =>
-      prev.map((item) =>
+    setTimetable((prev) => {
+      const sleepM = parseTimeMins(profile.sleepTime || '23:30');
+      const targetStart = Math.max(parseTimeMins(profile.collegeEnd || '17:00'), sleepM - 150);
+      const updated = prev.map((item) =>
         item.id === id
           ? {
               ...item,
-              startTime: '21:00',
-              endTime: '21:45',
+              startTime: formatMinsToTime(targetStart),
+              endTime: formatMinsToTime(Math.min(sleepM, targetStart + 45)),
               snoozed: true,
-              notes: (item.notes ? item.notes + ' · ' : '') + 'Moved to night hostel study slot.',
+              notes: (item.notes ? item.notes + ' · ' : '') + 'Moved to evening study slot.',
             }
           : item
-      )
-    );
+      );
+      return enforceStrictNonOverlappingTimetable(updated);
+    });
   };
 
   const injectBufferZone = (afterItemId?: string, durationMinutes: number = 25) => {
-    const newBuffer: TimetableItem = {
-      id: `buffer-${Date.now()}`,
-      title: 'Canteen Chai & Buffer Break',
-      category: 'chill',
-      startTime: '15:45',
-      endTime: '16:10',
-      completed: false,
-      cognitiveWeight: 1,
-      notes: 'Unplug from monitors, grab cutting chai/samosa, and refresh your mind.',
-    };
-
     setTimetable((prev) => {
-      if (!afterItemId) return [...prev, newBuffer];
+      const cEnd = profile.collegeEnd || '17:00';
+      const newBuffer: TimetableItem = {
+        id: `buffer-${Date.now()}`,
+        title: 'Canteen Chai & Buffer Break',
+        category: 'chill',
+        startTime: cEnd,
+        endTime: formatMinsToTime(parseTimeMins(cEnd) + durationMinutes),
+        completed: false,
+        cognitiveWeight: 1,
+        notes: 'Unplug from monitors, grab cutting chai/samosa, and refresh your mind.',
+      };
+
+      if (!afterItemId) {
+        return enforceStrictNonOverlappingTimetable([...prev, newBuffer]);
+      }
       const index = prev.findIndex((item) => item.id === afterItemId);
-      if (index === -1) return [...prev, newBuffer];
+      if (index === -1) {
+        return enforceStrictNonOverlappingTimetable([...prev, newBuffer]);
+      }
+      const anchorEnd = prev[index].endTime;
+      newBuffer.startTime = anchorEnd;
+      newBuffer.endTime = formatMinsToTime(parseTimeMins(anchorEnd) + durationMinutes);
       const clone = [...prev];
       clone.splice(index + 1, 0, newBuffer);
-      return clone;
+      return enforceStrictNonOverlappingTimetable(clone);
     });
 
     setRecalibrateNotice(`Chai & Buffer Zone added. No engineering burnout today!`);
@@ -591,11 +708,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const recalibrateSchedule = async (missedItemTitle?: string) => {
     setIsRecalibrating(true);
     try {
-      const searchParams = typeof window !== 'undefined' ? window.location.search || '' : '';
-      const response = await fetch(`/api/recalibrate${searchParams}`, {
+      const envBase = (import.meta as any).env?.VITE_API_BASE_URL;
+      const base = envBase && typeof envBase === 'string' && envBase.trim() ? envBase.trim().replace(/\/+$/, '') : '';
+      const response = await fetch(`${base}/api/recalibrate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           items: timetable.filter((t) => !t.completed),
           missedItemTitle: missedItemTitle || 'Missed Study Slot',
@@ -622,14 +739,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             id: `chill-recal-${Date.now()}`,
             title: 'Decompression & Chai Break',
             category: 'chill',
-            startTime: '16:00',
-            endTime: '16:30',
+            startTime: profile.collegeEnd || '17:00',
+            endTime: formatMinsToTime(parseTimeMins(profile.collegeEnd || '17:00') + 30),
             completed: false,
             cognitiveWeight: 1,
             notes: 'Restorative buffer added to prevent burnout.',
           });
         }
-        return updated;
+        return enforceStrictNonOverlappingTimetable(updated);
       });
 
       setRecalibrateNotice(
@@ -812,7 +929,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const next = !t.completed;
           if (next) {
             awardXp(20, `Task Completed: ${t.title}`);
-            setUserStreak((s) => (s === 0 ? 1 : s));
           }
           return { ...t, completed: next };
         }

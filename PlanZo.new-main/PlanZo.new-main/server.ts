@@ -142,8 +142,8 @@ Core Principles:
         });
       }
 
-      // Try modern models with gemini-3.1-flash-lite first for lightning-fast and reliable responses
-      const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+      // Try modern models with gemini-3.8-flash first for fast and reliable responses
+      const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
       let generatedText = '';
       let lastError: any = null;
 

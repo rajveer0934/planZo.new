@@ -352,7 +352,7 @@ export const SubjectAttendanceFolderModal: React.FC = () => {
                               min="0"
                               value={editAttended}
                               onChange={(e) => setEditAttended(Number(e.target.value))}
-                              className="w-12 p-1 text-center font-mono rounded border border-stone-300 dark:border-stone-700 text-xs bg-white dark:bg-stone-800"
+                              className="w-12 p-1 text-center font-mono rounded border border-stone-300 dark:border-stone-700 text-xs bg-white dark:bg-stone-800 text-stone-900 dark:text-emerald-400 font-bold"
                             />
                             <span>/</span>
                             <input
@@ -360,7 +360,7 @@ export const SubjectAttendanceFolderModal: React.FC = () => {
                               min="1"
                               value={editTotal}
                               onChange={(e) => setEditTotal(Number(e.target.value))}
-                              className="w-12 p-1 text-center font-mono rounded border border-stone-300 dark:border-stone-700 text-xs bg-white dark:bg-stone-800"
+                              className="w-12 p-1 text-center font-mono rounded border border-stone-300 dark:border-stone-700 text-xs bg-white dark:bg-stone-800 text-stone-900 dark:text-emerald-400 font-bold"
                             />
                           </div>
                           <button

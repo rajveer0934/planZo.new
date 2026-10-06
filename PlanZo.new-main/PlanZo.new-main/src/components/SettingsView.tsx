@@ -340,7 +340,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="time"
                     value={collegeStart}
                     onChange={(e) => setCollegeStart(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-850 text-xs font-bold text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-mono"
+                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs font-bold text-stone-900 dark:text-emerald-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-mono"
                   />
                 </div>
 
@@ -352,7 +352,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="time"
                     value={collegeEnd}
                     onChange={(e) => setCollegeEnd(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-850 text-xs font-bold text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-mono"
+                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs font-bold text-stone-900 dark:text-emerald-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-mono"
                   />
                 </div>
 
@@ -364,7 +364,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="time"
                     value={wakeTime}
                     onChange={(e) => setWakeTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-850 text-xs font-bold text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-mono"
+                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs font-bold text-stone-900 dark:text-emerald-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-mono"
                   />
                 </div>
 
@@ -376,7 +376,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     type="time"
                     value={sleepTime}
                     onChange={(e) => setSleepTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-850 text-xs font-bold text-stone-900 dark:text-stone-100 focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-mono"
+                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-xs font-bold text-stone-900 dark:text-emerald-400 focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-mono"
                   />
                 </div>
               </div>

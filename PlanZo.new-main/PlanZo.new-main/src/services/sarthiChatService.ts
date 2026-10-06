@@ -45,23 +45,46 @@ const FALLBACK_BACKEND_ENDPOINTS = [
 ];
 
 /**
+ * Resolve API URL using VITE_API_BASE_URL if provided in .env / deployment environment
+ */
+export function getApiUrl(path: string): string {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const envBase = (import.meta as any).env?.VITE_API_BASE_URL;
+  if (envBase && typeof envBase === 'string' && envBase.trim()) {
+    const base = envBase.trim().replace(/\/+$/, '');
+    return `${base}${cleanPath}`;
+  }
+  return cleanPath;
+}
+
+/**
  * Primary Sarthi AI Query Handler
- * Calls the backend `/api/chat` endpoint with automatic retry on transient spikes.
- * Does NOT use credentials: 'include' to guarantee seamless cross-origin and cross-browser support
- * across all student laptops, mobile phones, and incognito sessions.
+ * Calls the backend `/api/chat` endpoint (respecting `VITE_API_BASE_URL` if configured)
+ * with automatic retry on transient spikes and fallback to Cloud Run backend endpoints.
+ * Does NOT use credentials: 'include' to guarantee seamless cross-origin and cross-browser support.
  */
 export async function querySarthiAi(payload: ChatRequestPayload): Promise<string> {
+  const configuredEndpoint = getApiUrl('/api/chat');
   const localEndpoint = '/api/chat';
 
-  // Candidate endpoints to try
-  const endpointsToTry: string[] = [localEndpoint];
+  // Candidate endpoints to try in priority order
+  const endpointsToTry: string[] = [];
+  if (configuredEndpoint !== localEndpoint) {
+    endpointsToTry.push(configuredEndpoint);
+  }
+  endpointsToTry.push(localEndpoint);
+
   if (
     typeof window !== 'undefined' &&
     window.location.origin &&
     !window.location.origin.includes('localhost') &&
     !window.location.origin.includes('4jxtpt4bcbmoak3lbjynqw')
   ) {
-    endpointsToTry.push(...FALLBACK_BACKEND_ENDPOINTS);
+    for (const fb of FALLBACK_BACKEND_ENDPOINTS) {
+      if (!endpointsToTry.includes(fb)) {
+        endpointsToTry.push(fb);
+      }
+    }
   }
 
   let lastErrorMessage = '';
@@ -92,15 +115,21 @@ export async function querySarthiAi(payload: ChatRequestPayload): Promise<string
           }
         }
 
+        // If 404 or 405 on current endpoint (e.g., static host without /api/chat), immediately try next endpoint
+        if (res.status === 404 || res.status === 405) {
+          lastErrorMessage = `Backend endpoint ${endpoint} returned ${res.status}.`;
+          break;
+        }
+
         if (res.status === 503 || res.status === 429) {
           lastErrorMessage = 'AI server is experiencing high traffic. Please retry.';
-          // Wait 1.5s before second attempt
           if (attempt === 1) {
             await new Promise((resolve) => setTimeout(resolve, 1500));
             continue;
           }
         } else {
-          lastErrorMessage = `Server responded with status ${res.status}`;
+          const errData = await res.json().catch(() => null);
+          lastErrorMessage = errData?.error || `Server responded with status ${res.status}`;
         }
       } catch (netErr: any) {
         if (netErr?.name === 'AbortError') {
@@ -115,7 +144,6 @@ export async function querySarthiAi(payload: ChatRequestPayload): Promise<string
     }
   }
 
-  // If all live endpoints failed, throw so UI can show a clear Retry button
   throw new Error(
     lastErrorMessage || 'Sarthi AI is currently unreachable. Please check your network and retry.'
   );

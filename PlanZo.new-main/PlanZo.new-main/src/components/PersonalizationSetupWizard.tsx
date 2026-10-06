@@ -68,15 +68,15 @@ export const STUDENT_TEN_HABITS: StudentHabitItem[] = [
   {
     id: 'habit-gym',
     title: 'Gym / Workout / Physical Fitness',
-    desc: '45m physical exercise, gym or workout to sustain mental energy (Morning)',
+    desc: 'Physical exercise, gym or workout to sustain mental energy (Morning)',
     icon: '🏋️‍♂️',
     category: 'Health & Energy',
-    badge: 'Subah Fitness',
+    badge: 'Morning Fitness',
   },
   {
     id: 'habit-outdoor',
     title: 'Outdoor Walk, Running & Sports (Fresh Air)',
-    desc: '30-40m outdoor brisk walk, jogging or outdoor sports to decompress (Shaam)',
+    desc: 'Outdoor brisk walk, jogging or outdoor sports to decompress (Shaam)',
     icon: '🌳',
     category: 'Outdoor & Health',
     badge: 'Shaam Outdoor',
@@ -91,7 +91,7 @@ export const STUDENT_TEN_HABITS: StudentHabitItem[] = [
   },
   {
     id: 'habit-deepwork',
-    title: 'Deep Work: No-Phone Study Block (45m)',
+    title: 'Deep Work: No-Phone Study Block',
     desc: 'Distraction-free focus sprint with notifications turned off',
     icon: '📵',
     category: 'Academics',
@@ -435,13 +435,14 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
           'Daily Coding / DSA Practice',
           'Gym / Workout / Physical Fitness',
           'Daily Hydration (3L+ Water)',
-          'Deep Work: No-Phone Study Block (45m)',
+          'Deep Work: No-Phone Study Block',
           'Formula & Concept Sheet Revision',
         ]
   );
 
-  // Step 4: Attendance Input (Starts at 0 attended, 0 conducted for clean start)
+  // Step 5: Attendance Input (Starts at 0 attended, 0 conducted for clean start)
   const [attendanceValues, setAttendanceValues] = useState<Record<string, { attended: number; total: number }>>({});
+  const [focusedAttendanceField, setFocusedAttendanceField] = useState<string | null>(null);
 
   // Step 5: Generating state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -487,62 +488,156 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
   // Validation & Conflict-Resolution Engine:
   // Strictly enforces:
   // 1. No two tasks overlap in time.
-  // 2. Exactly one active task per time period.
-  // 3. College is strictly one unified block with user's exact collegeStartTime & collegeEndTime.
-  // 4. All tasks sequentially ordered from wake-up to bedtime.
+  // 2. All tasks strictly start at or after Wake-Up Time (wStart) and end at or before Target Bedtime (sEnd).
+  // 3. College is strictly one unified block with user's exact collegeStartTime & collegeEndTime (bounded within wake/sleep).
+  // 4. All tasks sequentially ordered from wake-up to bedtime without gaps or overlaps.
   const validateAndResolveSchedule = (
     tasks: TimetableItem[],
     cStart: string,
-    cEnd: string
+    cEnd: string,
+    wTime: string = wakeTime || '07:00',
+    sTime: string = sleepTime || '23:30'
   ): TimetableItem[] => {
     if (!tasks || tasks.length === 0) return [];
 
-    // Ensure college block matches exact user inputs
+    const wakeM = parseTimeToMinutes(wTime);
+    let sleepM = parseTimeToMinutes(sTime);
+    if (sleepM <= wakeM) {
+      sleepM = 1439; // Handle midnight/late bedtime gracefully within same-day minutes
+    }
+
+    const rawCStartM = parseTimeToMinutes(cStart);
+    const rawCEndM = parseTimeToMinutes(cEnd);
+    const boundedCStartM = Math.max(wakeM, Math.min(sleepM - 60, rawCStartM));
+    const boundedCEndM = Math.max(boundedCStartM + 30, Math.min(sleepM, rawCEndM));
+
+    // Separate pre-college, college, and post-college tasks so college stays anchored while strictly preventing overlaps
     const updated = tasks.map((t) => {
       if (t.id.includes('college') || t.category === 'lecture' || t.title.toLowerCase().includes('college')) {
         return {
           ...t,
           category: 'lecture' as ItemCategory,
-          startTime: cStart,
-          endTime: cEnd,
+          startTime: formatMinutesToTime(boundedCStartM),
+          endTime: formatMinutesToTime(boundedCEndM),
         };
       }
-      return t;
+      return { ...t };
     });
 
-    // Sort strictly by startTime
-    const sorted = [...updated].sort(
-      (a, b) => parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)
+    const collegeIdx = updated.findIndex(
+      (t) => t.id.includes('college') || t.category === 'lecture' || t.title.toLowerCase().includes('college')
     );
 
-    const resolved: TimetableItem[] = [];
-    for (let i = 0; i < sorted.length; i++) {
-      const cur = { ...sorted[i] };
-      const curStartM = parseTimeToMinutes(cur.startTime);
-      let curEndM = parseTimeToMinutes(cur.endTime);
+    const fitTasksIntoWindow = (
+      segment: TimetableItem[],
+      winStartM: number,
+      winEndM: number
+    ): TimetableItem[] => {
+      if (segment.length === 0 || winEndM <= winStartM) return [];
+      const totalAvail = winEndM - winStartM;
 
-      if (curEndM <= curStartM) {
-        curEndM = curStartM + 45;
-      }
+      // Desired durations
+      const desiredDurs = segment.map((item) => {
+        const s = parseTimeToMinutes(item.startTime);
+        const e = parseTimeToMinutes(item.endTime);
+        return Math.max(15, e > s ? e - s : 30);
+      });
 
-      if (resolved.length > 0) {
-        const prev = resolved[resolved.length - 1];
-        const prevEndM = parseTimeToMinutes(prev.endTime);
+      const sumDesired = desiredDurs.reduce((acc, d) => acc + d, 0);
+      let cursor = winStartM;
+      const result: TimetableItem[] = [];
 
-        if (curStartM < prevEndM) {
-          // CONFLICT DETECTED: Automatically push cur.startTime to prevEndM
-          const duration = Math.max(25, curEndM - curStartM);
-          const newStartM = prevEndM;
-          const newEndM = Math.min(1439, newStartM + duration);
-          cur.startTime = formatMinutesToTime(newStartM);
-          cur.endTime = formatMinutesToTime(newEndM);
+      for (let i = 0; i < segment.length; i++) {
+        const remainingSlots = segment.length - i;
+        const remainingTime = winEndM - cursor;
+        if (remainingTime < 10) break;
+
+        let dur: number;
+        if (i === segment.length - 1) {
+          // Last task in segment ends cleanly at window boundary (or its desired duration if plenty of room)
+          dur = sumDesired > totalAvail ? remainingTime : Math.min(remainingTime, desiredDurs[i]);
+        } else if (sumDesired > totalAvail) {
+          // Scale proportionally so every task fits strictly within [winStartM, winEndM] without overlapping
+          const scaled = Math.floor((desiredDurs[i] / sumDesired) * totalAvail);
+          dur = Math.max(10, Math.min(scaled, remainingTime - (remainingSlots - 1) * 10));
+        } else {
+          dur = Math.min(desiredDurs[i], remainingTime - (remainingSlots - 1) * 10);
         }
+
+        // If the task is explicitly the commute right before college or wind-down right before bed, stretch to boundary
+        const isLastBeforeBoundary =
+          segment[i].id.includes('commute') || segment[i].id.includes('night');
+        if (isLastBeforeBoundary && i === segment.length - 1) {
+          dur = remainingTime;
+        }
+
+        const startM = cursor;
+        const endM = Math.min(winEndM, startM + Math.max(10, dur));
+        result.push({
+          ...segment[i],
+          startTime: formatMinutesToTime(startM),
+          endTime: formatMinutesToTime(endM),
+        });
+        cursor = endM;
       }
 
-      resolved.push(cur);
+      return result;
+    };
+
+    if (collegeIdx !== -1) {
+      const collegeTask = updated[collegeIdx];
+      const otherTasks = updated.filter((_, i) => i !== collegeIdx);
+
+      // Partition tasks into morning (before college) and evening/night (after college)
+      const preCollege: TimetableItem[] = [];
+      const postCollege: TimetableItem[] = [];
+
+      otherTasks.forEach((t, idx) => {
+        const isExplicitMorning =
+          t.id.includes('morning') ||
+          t.id.includes('kickoff') ||
+          t.id.includes('commute');
+        const isExplicitEvening =
+          t.id.includes('tea') ||
+          t.id.includes('evening') ||
+          t.id.includes('primary-focus') ||
+          t.id.includes('dinner') ||
+          t.id.includes('night') ||
+          t.id.includes('additional-study');
+
+        if (isExplicitMorning) {
+          preCollege.push(t);
+        } else if (isExplicitEvening) {
+          postCollege.push(t);
+        } else if (parseTimeToMinutes(t.startTime) < boundedCStartM || idx < collegeIdx) {
+          preCollege.push(t);
+        } else {
+          postCollege.push(t);
+        }
+      });
+
+      // Sort custom tasks within each partition by startTime while preserving built-in sequence
+      preCollege.sort((a, b) => parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime));
+      postCollege.sort((a, b) => parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime));
+
+      const resolvedPre = fitTasksIntoWindow(preCollege, wakeM, boundedCStartM);
+      const resolvedPost = fitTasksIntoWindow(postCollege, boundedCEndM, sleepM);
+
+      return [
+        ...resolvedPre,
+        {
+          ...collegeTask,
+          startTime: formatMinutesToTime(boundedCStartM),
+          endTime: formatMinutesToTime(boundedCEndM),
+        },
+        ...resolvedPost,
+      ];
     }
 
-    return resolved;
+    const sortedAll = [...updated].sort(
+      (a, b) => parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime)
+    );
+    return fitTasksIntoWindow(sortedAll, wakeM, sleepM);
   };
 
   // Habit Analysis Engine:
@@ -644,7 +739,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
       const fitnessDur = availMorning >= 150 ? 40 : 30;
       draftTasks.push({
         id: 'prep-routine-fitness-morning',
-        title: `🏃‍♂️ Subah Fitness: ${morningFitness}`,
+        title: `🏃‍♂️ Morning Fitness: ${morningFitness}`,
         category: 'habit',
         startTime: formatMinutesToTime(morningCursor),
         endTime: formatMinutesToTime(morningCursor + fitnessDur),
@@ -668,13 +763,12 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
       morningCursor += prepDur;
     }
 
-    // B. ⭐ Subah Study Session: Most Important Task (~1 hour / 50-60m)
-    // "study ko bhi alg alg time pe rakho mainly subhe or raat me"
+    // B. ⭐ Morning Study Session: Most Important Task (~1 hour / 50-60m)
     const remainingBeforeCollege = cStartM - morningCursor;
     const mitMorningDur = remainingBeforeCollege >= 95 ? 60 : Math.max(45, remainingBeforeCollege - 35);
     draftTasks.push({
       id: 'prep-routine-mit-morning',
-      title: `⭐ Subah Deep Study: ${chosenMit} (Morning Priority Session 1)`,
+      title: `⭐ Morning Deep Study: ${chosenMit} (Morning Priority Session 1)`,
       category: 'study',
       startTime: formatMinutesToTime(morningCursor),
       endTime: formatMinutesToTime(morningCursor + mitMorningDur),
@@ -906,9 +1000,18 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     setEditingTaskId(null);
   };
 
-  // Delete a task from prepared schedule
+  // Delete a task from prepared schedule and re-validate timing
   const handleDeletePreparedTask = (taskId: string) => {
-    setPreparedTasks((prev) => prev.filter((t) => t.id !== taskId));
+    setPreparedTasks((prev) => {
+      const remaining = prev.filter((t) => t.id !== taskId);
+      return validateAndResolveSchedule(
+        remaining,
+        collegeStartTime || '10:00',
+        collegeEndTime || '17:00',
+        wakeTime || '07:00',
+        sleepTime || '23:30'
+      );
+    });
   };
 
   // Add custom task to prepared schedule with conflict resolution
@@ -959,7 +1062,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
       'Daily Coding / DSA Practice',
       'Gym / Workout / Physical Fitness',
       'Daily Hydration (3L+ Water)',
-      'Deep Work: No-Phone Study Block (45m)',
+      'Deep Work: No-Phone Study Block',
       'Formula & Concept Sheet Revision',
     ]);
   };
@@ -973,7 +1076,14 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
     setIsGenerating(true);
 
     const compiledSubjects = getCompiledSubjects();
-    const finalSchedule = preparedTasks.length > 0 ? preparedTasks : generatePreparedTasks();
+    const rawSchedule = preparedTasks.length > 0 ? preparedTasks : generatePreparedTasks();
+    const finalSchedule = validateAndResolveSchedule(
+      rawSchedule,
+      collegeStartTime || '10:00',
+      collegeEndTime || '17:00',
+      wakeTime || '07:00',
+      sleepTime || '23:30'
+    );
 
     // Build Attendance Array (Starts at 0/0 unless user explicitly entered)
     const newAttendanceList: SubjectAttendance[] = compiledSubjects.map((sub) => {
@@ -1129,7 +1239,10 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                 className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/70 dark:bg-stone-900/60 text-stone-900 dark:text-stone-100 font-semibold focus:outline-hidden focus:ring-2 focus:ring-emerald-500/50 cursor-pointer"
               >
                 <option value="Samrat Ashok Technological Institute (SATI), Vidisha M.P.">
-                  ⭐ Samrat Ashok Technological Institute (SATI), Vidisha M.P. (Autonomous)
+                  Samrat Ashok Technological Institute (SATI), Vidisha M.P. (Autonomous)
+                </option>
+                <option value="Sagar Institute of Research and Technology (SIRT), Bhopal">
+                  Sagar Institute of Research and Technology (SIRT), Bhopal
                 </option>
                 <option value="University Institute of Technology, RGPV Bhopal">
                   University Institute of Technology, RGPV Bhopal
@@ -1154,7 +1267,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                 </option>
               </select>
 
-              {(college === 'OTHERS' || !['Samrat Ashok Technological Institute (SATI), Vidisha M.P.', 'University Institute of Technology, RGPV Bhopal', 'Shri Govindram Seksaria Institute of Technology and Science (SGSITS), Indore', 'Institute of Engineering & Technology (IET DAVV), Indore', 'Madhav Institute of Technology & Science (MITS), Gwalior', 'Jabalpur Engineering College (JEC), Jabalpur', 'Medi-Caps University, Indore'].includes(college)) && (
+              {(college === 'OTHERS' || !['Samrat Ashok Technological Institute (SATI), Vidisha M.P.', 'Sagar Institute of Research and Technology (SIRT), Bhopal', 'University Institute of Technology, RGPV Bhopal', 'Shri Govindram Seksaria Institute of Technology and Science (SGSITS), Indore', 'Institute of Engineering & Technology (IET DAVV), Indore', 'Madhav Institute of Technology & Science (MITS), Gwalior', 'Jabalpur Engineering College (JEC), Jabalpur', 'Medi-Caps University, Indore'].includes(college)) && (
                 <input
                   type="text"
                   value={customCollege}
@@ -1331,12 +1444,6 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[340px] overflow-y-auto pr-1">
               {currentAvailableSubjects.map((sub) => {
                 const isSelected = selectedSubjectIds.includes(sub.id);
-                const isSem3 = isSecondYear && sem3Subs.some((s) => s.id === sub.id);
-                const isSem4 = isSecondYear && sem4Subs.some((s) => s.id === sub.id);
-                const isSem5 = isThirdYear && sem5Subs.some((s) => s.id === sub.id);
-                const isSem6 = isThirdYear && sem6Subs.some((s) => s.id === sub.id);
-                const isSem7 = isFourthYear && sem7Subs.some((s) => s.id === sub.id);
-                const isSem8 = isFourthYear && sem8Subs.some((s) => s.id === sub.id);
                 return (
                   <div
                     key={sub.id}
@@ -1360,57 +1467,38 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${
-                            isSelected
-                              ? 'bg-teal-100 dark:bg-teal-900/80 text-teal-800 dark:text-teal-200'
-                              : 'bg-stone-100 dark:bg-stone-800 text-stone-500'
-                          }`}>
-                            {sub.code}
-                          </span>
-                          {isSecondYear && (
+                        {isFoundationYear ? (
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${
-                              isSem3
-                                ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
-                                : 'bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300'
+                              isSelected
+                                ? 'bg-teal-100 dark:bg-teal-900/80 text-teal-800 dark:text-teal-200'
+                                : 'bg-stone-100 dark:bg-stone-800 text-stone-500'
                             }`}>
-                              {isSem3 ? 'Sem 3' : isSem4 ? 'Sem 4' : '2nd Year'}
+                              {sub.code}
                             </span>
-                          )}
-                          {isThirdYear && (
-                            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${
-                              isSem5
-                                ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
-                                : 'bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300'
-                            }`}>
-                              {isSem5 ? 'Sem 5' : isSem6 ? 'Sem 6' : '3rd Year'}
-                            </span>
-                          )}
-                          {isFourthYear && (
-                            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${
-                              isSem7
-                                ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
-                                : 'bg-teal-100 dark:bg-teal-950 text-teal-700 dark:text-teal-300'
-                            }`}>
-                              {isSem7 ? 'Sem 7' : isSem8 ? 'Sem 8' : '4th Year'}
-                            </span>
-                          )}
-                          {isFoundationYear && (
                             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded font-medium bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
                               1st Year
                             </span>
-                          )}
-                        </div>
-                        <span className="text-[10px] font-mono text-stone-400 font-medium">
+                          </div>
+                        ) : (
+                          <div className={`font-bold text-xs truncate ${
+                            isSelected ? 'text-teal-950 dark:text-teal-100' : 'text-stone-800 dark:text-stone-200'
+                          }`}>
+                            {sub.name}
+                          </div>
+                        )}
+                        <span className="text-[10px] font-mono text-stone-400 font-medium shrink-0">
                           {sub.credits} Credits
                         </span>
                       </div>
 
-                      <div className={`font-bold text-xs mt-1 truncate ${
-                        isSelected ? 'text-teal-950 dark:text-teal-100' : 'text-stone-800 dark:text-stone-200'
-                      }`}>
-                        {sub.name}
-                      </div>
+                      {isFoundationYear && (
+                        <div className={`font-bold text-xs mt-1 truncate ${
+                          isSelected ? 'text-teal-950 dark:text-teal-100' : 'text-stone-800 dark:text-stone-200'
+                        }`}>
+                          {sub.name}
+                        </div>
+                      )}
 
                       <div className="text-[10px] text-stone-500 dark:text-stone-400 mt-0.5 truncate">
                         {sub.standardTextbook ? sub.standardTextbook.split('by')[0].trim() : '5 Units · Theory & Practice'}
@@ -1613,7 +1701,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                     type="time"
                     value={collegeStartTime}
                     onChange={(e) => setCollegeStartTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 font-mono text-xs font-semibold text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-teal-500/50 shadow-xs"
+                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 font-mono text-xs font-bold text-stone-900 dark:text-emerald-400 focus:ring-2 focus:ring-teal-500/50 shadow-xs"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1625,7 +1713,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                     type="time"
                     value={collegeEndTime}
                     onChange={(e) => setCollegeEndTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 font-mono text-xs font-semibold text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-teal-500/50 shadow-xs"
+                    className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 font-mono text-xs font-bold text-stone-900 dark:text-emerald-400 focus:ring-2 focus:ring-teal-500/50 shadow-xs"
                   />
                 </div>
               </div>
@@ -1649,7 +1737,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                     className={`px-2 py-0.5 rounded-lg text-[10px] font-mono transition-colors cursor-pointer border ${
                       collegeStartTime === preset.start && collegeEndTime === preset.end
                         ? 'bg-teal-600 text-white border-teal-600 font-bold'
-                        : 'bg-white dark:bg-stone-800 text-stone-600 dark:text-stone-400 border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-750'
+                        : 'bg-white dark:bg-stone-800 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-700'
                     }`}
                   >
                     {preset.label}
@@ -1668,7 +1756,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                   type="time"
                   value={wakeTime}
                   onChange={(e) => setWakeTime(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/70 dark:bg-stone-900/60 font-mono text-xs focus:ring-2 focus:ring-emerald-500/50"
+                  className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-emerald-400 font-mono font-bold text-xs focus:ring-2 focus:ring-emerald-500/50"
                 />
               </div>
               <div className="space-y-1.5">
@@ -1679,7 +1767,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                   type="time"
                   value={sleepTime}
                   onChange={(e) => setSleepTime(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50/70 dark:bg-stone-900/60 font-mono text-xs focus:ring-2 focus:ring-emerald-500/50"
+                  className="w-full px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-emerald-400 font-mono font-bold text-xs focus:ring-2 focus:ring-emerald-500/50"
                 />
               </div>
             </div>
@@ -1928,15 +2016,32 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                           type="number"
                           min="0"
                           max="100"
-                          value={current.attended}
+                          placeholder="0"
+                          value={
+                            focusedAttendanceField === `${sub.id}-attended` && current.attended === 0
+                              ? ''
+                              : current.attended
+                          }
+                          onFocus={(e) => {
+                            setFocusedAttendanceField(`${sub.id}-attended`);
+                            if (current.attended !== 0) {
+                              e.target.select();
+                            }
+                          }}
+                          onBlur={() => {
+                            setFocusedAttendanceField((prev) =>
+                              prev === `${sub.id}-attended` ? null : prev
+                            );
+                          }}
                           onChange={(e) => {
-                            const val = parseInt(e.target.value) || 0;
+                            const raw = e.target.value;
+                            const val = raw === '' ? 0 : Math.max(0, parseInt(raw, 10) || 0);
                             setAttendanceValues((prev) => ({
                               ...prev,
                               [sub.id]: { attended: val, total: Math.max(val, current.total) },
                             }));
                           }}
-                          className="w-12 px-1.5 py-1 text-center rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 font-bold"
+                          className="w-12 px-1.5 py-1 text-center rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-emerald-400 font-bold"
                         />
                       </div>
                       <span className="text-stone-400 pt-3">/</span>
@@ -1946,15 +2051,32 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                           type="number"
                           min="0"
                           max="100"
-                          value={current.total}
+                          placeholder="0"
+                          value={
+                            focusedAttendanceField === `${sub.id}-total` && current.total === 0
+                              ? ''
+                              : current.total
+                          }
+                          onFocus={(e) => {
+                            setFocusedAttendanceField(`${sub.id}-total`);
+                            if (current.total !== 0) {
+                              e.target.select();
+                            }
+                          }}
+                          onBlur={() => {
+                            setFocusedAttendanceField((prev) =>
+                              prev === `${sub.id}-total` ? null : prev
+                            );
+                          }}
                           onChange={(e) => {
-                            const val = parseInt(e.target.value) || 0;
+                            const raw = e.target.value;
+                            const val = raw === '' ? 0 : Math.max(0, parseInt(raw, 10) || 0);
                             setAttendanceValues((prev) => ({
                               ...prev,
                               [sub.id]: { attended: current.attended, total: val },
                             }));
                           }}
-                          className="w-12 px-1.5 py-1 text-center rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 font-bold"
+                          className="w-12 px-1.5 py-1 text-center rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-emerald-400 font-bold"
                         />
                       </div>
                     </div>
@@ -2019,13 +2141,13 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
               </div>
               <div className="flex flex-wrap gap-1.5 text-[10px]">
                 <span className="px-2 py-0.5 rounded-md bg-white dark:bg-stone-900 border border-teal-200 dark:border-teal-800/80 font-medium">
-                  🏃‍♂️ Subah Fitness: <strong>Adjusted in Morning</strong>
+                  🏃‍♂️ Morning Fitness: <strong>Adjusted in Morning</strong>
                 </span>
                 <span className="px-2 py-0.5 rounded-md bg-white dark:bg-stone-900 border border-teal-200 dark:border-teal-800/80 font-medium">
                   🌳 Shaam Outdoor: <strong>Adjusted in Evening</strong>
                 </span>
                 <span className="px-2 py-0.5 rounded-md bg-white dark:bg-stone-900 border border-teal-200 dark:border-teal-800/80 font-medium">
-                  ⭐ Study Timing: <strong>Subah (~1h) & Raat (~1h)</strong>
+                  ⭐ Study Timing: <strong>Morning (~1h) & Night (~1h)</strong>
                 </span>
                 <span className="px-2 py-0.5 rounded-md bg-white dark:bg-stone-900 border border-teal-200 dark:border-teal-800/80 font-medium">
                   🎯 Primary Focus: <strong>1h 30m Dedicated Block</strong>
@@ -2056,14 +2178,14 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                       value={newTaskTitle}
                       onChange={(e) => setNewTaskTitle(e.target.value)}
                       placeholder="Task Title (e.g. Lab Manual Record, Gym Workout)..."
-                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 text-xs text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-teal-500"
+                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-hidden focus:ring-1 focus:ring-teal-500"
                     />
                   </div>
                   <div>
                     <select
                       value={newTaskCategory}
                       onChange={(e) => setNewTaskCategory(e.target.value as ItemCategory)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 text-xs text-stone-900 dark:text-stone-100 font-medium cursor-pointer"
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs text-stone-900 dark:text-stone-100 font-medium cursor-pointer"
                     >
                       <option value="study">Deep Study</option>
                       <option value="habit">Daily Habit</option>
@@ -2082,7 +2204,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                         type="time"
                         value={newTaskStartTime}
                         onChange={(e) => setNewTaskStartTime(e.target.value)}
-                        className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 text-xs font-semibold text-stone-900 dark:text-stone-100"
+                        className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs font-bold text-stone-900 dark:text-emerald-400"
                       />
                     </div>
                     <div className="flex items-center gap-1 text-[11px] font-mono text-stone-500">
@@ -2091,7 +2213,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                         type="time"
                         value={newTaskEndTime}
                         onChange={(e) => setNewTaskEndTime(e.target.value)}
-                        className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 text-xs font-semibold text-stone-900 dark:text-stone-100"
+                        className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs font-bold text-stone-900 dark:text-emerald-400"
                       />
                     </div>
                   </div>
@@ -2145,7 +2267,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                         type="text"
                         value={editTitle}
                         onChange={(e) => setEditTitle(e.target.value)}
-                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-semibold text-stone-900 dark:text-stone-100"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs font-semibold text-stone-900 dark:text-stone-100"
                       />
 
                       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -2156,7 +2278,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                               type="time"
                               value={editStartTime}
                               onChange={(e) => setEditStartTime(e.target.value)}
-                              className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-semibold"
+                              className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs font-bold text-stone-900 dark:text-emerald-400"
                             />
                           </div>
                           <div className="flex items-center gap-1 text-[11px] font-mono text-stone-500">
@@ -2165,7 +2287,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                               type="time"
                               value={editEndTime}
                               onChange={(e) => setEditEndTime(e.target.value)}
-                              className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-semibold"
+                              className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs font-bold text-stone-900 dark:text-emerald-400"
                             />
                           </div>
                         </div>
@@ -2173,7 +2295,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                         <select
                           value={editCategory}
                           onChange={(e) => setEditCategory(e.target.value as ItemCategory)}
-                          className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 text-xs font-medium"
+                          className="px-2 py-1 rounded border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-xs font-medium text-stone-900 dark:text-stone-100"
                         >
                           <option value="lecture">Lecture / College</option>
                           <option value="study">Deep Study</option>
@@ -2192,11 +2314,7 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                   return (
                     <div
                       key={task.id}
-                      className={`p-3.5 rounded-2xl border transition-all flex flex-col gap-2.5 ${
-                        task.completed
-                          ? 'border-emerald-500/80 bg-emerald-50/70 dark:bg-emerald-950/40 shadow-xs'
-                          : 'border-teal-500/80 bg-teal-50/50 dark:border-teal-800/80 dark:bg-teal-950/30'
-                      }`}
+                      className="p-3.5 rounded-2xl border border-teal-500/80 bg-teal-50/50 dark:border-teal-800/80 dark:bg-teal-950/30 transition-all flex flex-col gap-2"
                     >
                       {/* Top Header of College Block */}
                       <div className="flex items-center justify-between gap-2">
@@ -2236,33 +2354,8 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                           {task.title}
                         </h4>
                         <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
-                          Single unified task for your full college schedule. Mark once here or on your dashboard to cover all lectures and practicals.
+                          Single unified block for your full college schedule ({task.startTime} – {task.endTime}). Click the edit icon to customize title or timings.
                         </p>
-                      </div>
-
-                      {/* THE SINGLE OPTION TO MARK WHOLE COLLEGE */}
-                      <div className="pt-1">
-                        <button
-                          type="button"
-                          onClick={() => handleTogglePreparedTask(task.id)}
-                          className={`w-full py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                            task.completed
-                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
-                              : 'bg-white dark:bg-stone-850 hover:bg-stone-100 dark:hover:bg-stone-800 text-teal-800 dark:text-teal-200 border border-teal-500/40 hover:border-teal-600 shadow-2xs'
-                          }`}
-                        >
-                          {task.completed ? (
-                            <>
-                              <CheckCircle2 className="w-4 h-4 fill-emerald-100 text-emerald-800 dark:fill-emerald-950 dark:text-emerald-300" />
-                              <span>✓ College Marked Present / Completed ({task.startTime} – {task.endTime})</span>
-                            </>
-                          ) : (
-                            <>
-                              <Square className="w-4 h-4 text-teal-700 dark:text-teal-400" />
-                              <span>Mark Whole College Attended ({task.startTime} – {task.endTime})</span>
-                            </>
-                          )}
-                        </button>
                       </div>
                     </div>
                   );
@@ -2272,50 +2365,28 @@ export const PersonalizationSetupWizard: React.FC<PersonalizationSetupWizardProp
                 return (
                   <div
                     key={task.id}
-                    className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
-                      task.completed
-                        ? 'border-stone-200 dark:border-stone-800 bg-stone-100/60 dark:bg-stone-900/30 opacity-75'
-                        : 'border-stone-200/90 dark:border-stone-800 bg-white dark:bg-stone-900/50 hover:border-teal-500/50'
-                    }`}
+                    className="p-3 rounded-xl border border-stone-200/90 dark:border-stone-800 bg-white dark:bg-stone-900/50 hover:border-teal-500/50 transition-all flex items-center justify-between gap-3"
                   >
-                    {/* Mark Checkbox */}
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePreparedTask(task.id)}
-                        className="text-stone-400 hover:text-teal-600 transition-colors shrink-0 cursor-pointer"
-                        title={task.completed ? 'Mark pending' : 'Mark completed'}
-                      >
-                        {task.completed ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        ) : (
-                          <Square className="w-4 h-4" />
-                        )}
-                      </button>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
-                            task.category === 'study'
-                              ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200'
-                              : task.category === 'habit'
-                              ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200'
-                              : task.category === 'lab'
-                              ? 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200'
-                              : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
-                          }`}>
-                            {task.category}
-                          </span>
-                          <span className="text-[11px] font-mono font-bold text-stone-500 dark:text-stone-400">
-                            {task.startTime} – {task.endTime}
-                          </span>
-                        </div>
-
-                        <div className={`font-semibold text-xs mt-1 truncate ${
-                          task.completed ? 'line-through text-stone-400' : 'text-stone-900 dark:text-stone-100'
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                          task.category === 'study'
+                            ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-200'
+                            : task.category === 'habit'
+                            ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-200'
+                            : task.category === 'lab'
+                            ? 'bg-indigo-100 dark:bg-indigo-950/70 text-indigo-800 dark:text-indigo-200'
+                            : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
                         }`}>
-                          {task.title}
-                        </div>
+                          {task.category}
+                        </span>
+                        <span className="text-[11px] font-mono font-bold text-stone-500 dark:text-stone-400">
+                          {task.startTime} – {task.endTime}
+                        </span>
+                      </div>
+
+                      <div className="font-semibold text-xs mt-1 truncate text-stone-900 dark:text-stone-100">
+                        {task.title}
                       </div>
                     </div>
 

@@ -7,6 +7,8 @@
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   --font-display: 'Syne', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  --color-stone-750: #36322f;
+  --color-stone-850: #1f1d1b;
 }
 
 html.dark {
@@ -19,6 +21,24 @@ html:not(.dark) {
   color-scheme: light;
   background-color: #f8fafc;
   color: #0f172a;
+}
+
+/* Ensure all inputs, time/date pickers, and selects have crisp, visible text in both light & dark mode */
+html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.dark select,
+html.dark textarea {
+  color-scheme: dark;
+}
+
+html.dark input[type="time"],
+html.dark input[type="date"],
+html.dark input[type="number"] {
+  color: #34d399;
+}
+
+html.dark select option {
+  background-color: #1c1917;
+  color: #f5f5f4;
 }
 
 @layer utilities {

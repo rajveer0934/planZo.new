@@ -104,11 +104,11 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenAddTaskModal }) => {
   };
 
   // Filter tasks based on activeTab
-  const todayTasks = timetable.filter((t) => !t.completed);
+  const pendingTasks = timetable.filter((t) => !t.completed);
   const completedTasks = timetable.filter((t) => t.completed);
 
-  // Filter list by tab and category
-  let currentList = activeTab === 'completed' ? completedTasks : todayTasks;
+  // Keep completed tasks on screen in the main 'today' list (just lined-through), or filter if 'completed' tab is chosen
+  let currentList = activeTab === 'completed' ? completedTasks : timetable;
 
   if (categoryFilter !== 'all') {
     currentList = currentList.filter((item) => {
@@ -135,7 +135,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenAddTaskModal }) => {
             Schedule & Tasks
           </h2>
           <p className="text-xs text-stone-500">
-            {todayTasks.length} pending · {completedTasks.length} completed today
+            {pendingTasks.length} pending · {completedTasks.length} completed today
           </p>
         </div>
 
@@ -149,7 +149,7 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenAddTaskModal }) => {
                 : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
             }`}
           >
-            Today ({todayTasks.length})
+            Today ({timetable.length})
           </button>
           <button
             onClick={() => setActiveTab('completed')}
@@ -415,13 +415,15 @@ export const TasksView: React.FC<TasksViewProps> = ({ onOpenAddTaskModal }) => {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`text-xs sm:text-sm font-semibold truncate ${
-                        isCompleted ? 'line-through text-stone-400' : 'text-stone-900 dark:text-stone-100'
+                        isCompleted
+                          ? 'line-through decoration-2 decoration-stone-400 dark:decoration-stone-500 text-stone-400 dark:text-stone-500'
+                          : 'text-stone-900 dark:text-stone-100'
                       }`}>
                         {item.title}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2 text-xs text-stone-500 mt-0.5">
+                    <div className={`flex items-center gap-2 text-xs text-stone-500 mt-0.5 ${isCompleted ? 'line-through text-stone-400 dark:text-stone-600' : ''}`}>
                       <span className="font-mono">{item.startTime} – {item.endTime}</span>
                       <span>·</span>
                       <span className="capitalize">{item.category}</span>
