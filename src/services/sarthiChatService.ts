@@ -42,21 +42,25 @@ export function cleanAiResponseFormat(text: string): string {
 /* Config                                                              */
 /* ------------------------------------------------------------------ */
 
-// Production backend URL (e.g. https://your-backend.run.app) -- set it in .env as:
-// VITE_API_BASE_URL=https://your-backend.run.app
-// Agar frontend aur backend same domain par hain to khali chhod do.
-const API_BASE: string = (
-  ((import.meta as any)?.env?.VITE_API_BASE_URL as string | undefined) || ''
-).replace(/\/+$/, '');
+const env = ((import.meta as any)?.env ?? {}) as Record<string, string | undefined>;
 
-// Last-resort fallback. IMPORTANT: ye URL sahi aur zinda hona chahiye,
-// warna isko hata do. Dead URL sirf timeout badhata hai.
-const FALLBACK_BACKEND_ENDPOINT =
-  'https://ais-dev-xwtqs7ljetyij5npxh755f-893813178872.asia-east1.run.app/api/chat';
+// Backend URL, e.g. https://your-backend.run.app
+// .env me set karo:  VITE_API_BASE_URL=https://your-backend.run.app
+// Agar frontend aur backend SAME domain par hain to khali chhod do.
+// NOTE: Vite env build time par bake hota hai -- .env badalne ke baad
+// dev server restart / dobara build + deploy zaroori hai.
+const API_BASE: string = (env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
 
-const REQUEST_TIMEOUT_MS = 30000; // per attempt (fetch + body read dono cover)
+// Optional backup backend (sirf tab use hoga jab .env me diya ho):
+// VITE_FALLBACK_API_URL=https://backup-backend.run.app
+// Purana hardcoded "ais-dev" URL hata diya gaya hai -- wo expire ho chuka tha
+// aur har request me 30s x 2 extra timeout add kar raha tha.
+const FALLBACK_API_BASE: string = (env.VITE_FALLBACK_API_URL || '').trim().replace(/\/+$/, '');
+
+const REQUEST_TIMEOUT_MS = 60000; // per attempt (AI + cold start ke liye 60s)
 const MAX_ATTEMPTS_PER_ENDPOINT = 2;
 const MAX_HISTORY_MESSAGES = 10; // sirf last N messages bhejo
+const RETRYABLE_STATUS = [408, 425, 429, 500, 502, 503, 504];
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -89,16 +93,37 @@ function buildLeanPayload(payload: ChatRequestPayload): ChatRequestPayload {
 
 function getEndpoints(): string[] {
   const endpoints: string[] = [`${API_BASE}/api/chat`];
+  if (FALLBACK_API_BASE) endpoints.push(`${FALLBACK_API_BASE}/api/chat`);
 
-  const isBrowser = typeof window !== 'undefined' && !!window.location?.origin;
-  if (isBrowser) {
-    const origin = window.location.origin;
-    const isLocalOrDev = origin.includes('localhost') || origin.includes('ais-dev');
-    if (!isLocalOrDev && !FALLBACK_BACKEND_ENDPOINT.startsWith(origin)) {
-      endpoints.push(FALLBACK_BACKEND_ENDPOINT);
+  // Production me API_BASE khali hai matlab same-origin /api/chat use hoga.
+  // Agar frontend static hosting par hai (Vercel/Netlify/Firebase) to wahan
+  // /api/chat exist nahi karta -> 404/HTML. Isliye warning.
+  if (typeof window !== 'undefined' && !API_BASE) {
+    const host = window.location?.hostname || '';
+    const isLocal = host === 'localhost' || host === '127.0.0.1';
+    if (!isLocal) {
+      console.warn(
+        '[SarthiAI] VITE_API_BASE_URL set nahi hai. Same-origin /api/chat use ho raha hai. ' +
+          'Agar backend alag domain par hai to .env me VITE_API_BASE_URL set karke dobara build karo.'
+      );
     }
   }
   return Array.from(new Set(endpoints));
+}
+
+/** Server ke error body se readable message nikalo (JSON ya plain text) */
+function extractServerMessage(raw: string): string {
+  if (!raw) return '';
+  try {
+    const j = JSON.parse(raw);
+    const m = j?.error?.message ?? j?.error ?? j?.message ?? j?.detail;
+    if (m) return typeof m === 'string' ? m : JSON.stringify(m);
+  } catch {
+    /* not JSON */
+  }
+  // HTML error page ho to ignore
+  if (/^\s*</.test(raw)) return '';
+  return raw.slice(0, 200);
 }
 
 async function postOnce(endpoint: string, body: string): Promise<string> {
@@ -116,37 +141,41 @@ async function postOnce(endpoint: string, body: string): Promise<string> {
       body,
     });
 
+    // Body hamesha timeout ke andar hi padho
+    const raw = await res.text();
+
     if (!res.ok) {
-      let detail = '';
-      try {
-        detail = (await res.text()).slice(0, 200);
-      } catch {
-        /* ignore */
-      }
-      const retryable = [429, 500, 502, 503, 504].includes(res.status);
-      let msg = `Server error (${res.status})`;
+      const serverMsg = extractServerMessage(raw);
+      const retryable = RETRYABLE_STATUS.includes(res.status);
+      let msg = serverMsg || `Server error (${res.status})`;
+
       if (res.status === 429 || res.status === 503) {
         msg = 'AI server is experiencing high traffic. Please retry.';
       } else if (res.status === 404 || res.status === 405) {
-        msg = 'Chat backend (/api/chat) not found. Backend deploy / URL check karo.';
+        msg = 'Chat backend (/api/chat) not found. Backend deploy / VITE_API_BASE_URL check karo.';
       } else if (res.status === 413) {
         msg = 'Request too large. Attachment chhota karke try karo.';
+      } else if (res.status === 401 || res.status === 403) {
+        msg = serverMsg || 'Backend ne request reject ki (auth / API key / CORS check karo).';
       }
-      console.error(`[SarthiAI] ${endpoint} -> ${res.status}`, detail);
+      console.error(`[SarthiAI] ${endpoint} -> ${res.status}`, raw.slice(0, 300));
       throw new ChatHttpError(msg, res.status, retryable);
     }
 
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
+    // Content-type par depend mat karo -- seedha JSON parse try karo
+    let data: any;
+    try {
+      data = JSON.parse(raw);
+    } catch {
       // Usually HTML page aata hai jab backend exist hi nahi karta
+      console.error(`[SarthiAI] Non-JSON response from ${endpoint}:`, raw.slice(0, 300));
       throw new ChatHttpError(
-        'Backend returned a non-JSON response. /api/chat endpoint check karo.',
+        'Backend returned a non-JSON response. /api/chat endpoint ya VITE_API_BASE_URL check karo.',
         res.status,
         false
       );
     }
 
-    const data = await res.json();
     const reply = data?.reply ?? data?.text ?? data?.response ?? data?.message;
 
     if (typeof reply === 'string' && reply.trim()) {
@@ -154,7 +183,11 @@ async function postOnce(endpoint: string, body: string): Promise<string> {
     }
 
     throw new ChatHttpError(
-      data?.error ? String(data.error) : 'Sarthi AI returned an empty reply.',
+      data?.error
+        ? typeof data.error === 'string'
+          ? data.error
+          : data.error?.message || 'Sarthi AI returned an error.'
+        : 'Sarthi AI returned an empty reply.',
       502,
       true
     );
@@ -163,10 +196,10 @@ async function postOnce(endpoint: string, body: string): Promise<string> {
     if (err?.name === 'AbortError') {
       throw new ChatHttpError('Request timed out. Please try asking again.', 408, true);
     }
-    // Network error / CORS block
+    // Network error / CORS block / DNS fail / server down
     console.error(`[SarthiAI] network/CORS error on ${endpoint}:`, err);
     throw new ChatHttpError(
-      err?.message || 'Network connection failed.',
+      'Cannot reach Sarthi AI server. Internet, backend URL ya CORS settings check karo.',
       0,
       true
     );
@@ -181,8 +214,8 @@ async function postOnce(endpoint: string, body: string): Promise<string> {
 
 /**
  * Primary Sarthi AI Query Handler
- * - Pehle same-origin / configured backend, phir fallback
- * - Sirf transient errors (429/5xx/timeout/network) par retry
+ * - Pehle configured / same-origin backend, phir optional fallback
+ * - Sirf transient errors (408/429/5xx/timeout/network) par retry
  * - credentials: 'include' use nahi hota (cross-origin friendly)
  */
 export async function querySarthiAi(payload: ChatRequestPayload): Promise<string> {
@@ -204,7 +237,7 @@ export async function querySarthiAi(payload: ChatRequestPayload): Promise<string
         if (!retryable) break;
 
         if (attempt < MAX_ATTEMPTS_PER_ENDPOINT) {
-          await sleep(1000 * attempt); // 1s backoff
+          await sleep(1500 * attempt); // backoff
         }
       }
     }
